@@ -340,6 +340,15 @@ body {
     font-style: italic;
 }
 
+.filename-label {
+    margin-top: 8px;
+    font-size: 0.78rem;
+    color: var(--text-light);
+    font-style: italic;
+    word-break: break-all;
+    text-align: center;
+}
+
 .arrow-container { display: flex; align-items: center; justify-content: center; }
 
 .arrow {
@@ -410,6 +419,7 @@ body {
     display: flex;
     align-items: flex-start;
     gap: 10px;
+    flex-wrap: wrap;
     background: #fff5f5;
     border: 1.5px solid #f5c6c6;
     border-radius: 12px;
@@ -418,6 +428,13 @@ body {
     color: #c0392b;
     font-size: 0.93rem;
     line-height: 1.5;
+}
+
+.btn-retry {
+    margin-top: 6px;
+    align-self: flex-start;
+    font-size: 0.88rem;
+    padding: 7px 16px;
 }
 
 .error-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
