@@ -1,8 +1,7 @@
 'use strict';
 
 const REPLICATE_API = 'https://api.replicate.com/v1';
-const MODEL_OWNER = 'stability-ai';
-const MODEL_NAME = 'stable-diffusion-img2img';
+const MODEL_VERSION = '9a9b6aa5ac2793993aaaff48fd0e05fc5be213bc85a0bafd24e578d3bb81e628';
 
 const GHIBLI_PROMPT =
     'studio ghibli style, ghibli anime, miyazaki, hand drawn animation, ' +
@@ -237,14 +236,15 @@ async function createPrediction(apiKey, imageDataUrl, strength) {
     let response;
     try {
         response = await fetch(
-            `${REPLICATE_API}/models/${MODEL_OWNER}/${MODEL_NAME}/predictions`,
+            `${REPLICATE_API}/predictions`,
             {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${apiKey}`,
+                    'Authorization': `Token ${apiKey}`,
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
+                    version: MODEL_VERSION,
                     input: {
                         image: imageDataUrl,
                         prompt: GHIBLI_PROMPT,
@@ -277,7 +277,7 @@ async function pollPrediction(apiKey, predictionUrl) {
         await sleep(POLL_INTERVAL_MS);
 
         const response = await fetch(predictionUrl, {
-            headers: { 'Authorization': `Bearer ${apiKey}` },
+            headers: { 'Authorization': `Token ${apiKey}` },
         });
 
         if (!response.ok) {
