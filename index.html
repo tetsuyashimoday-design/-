@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ジブリ風写真変換</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-cloud cloud-left"></div>
+            <div class="header-cloud cloud-right"></div>
+            <h1>ジブリ風写真変換</h1>
+            <p class="subtitle">あなたの写真を魔法のジブリ世界へ</p>
+        </header>
+
+        <section class="api-section card">
+            <label class="label" for="api-key">
+                <span class="label-icon">🔑</span> Replicate APIキー
+            </label>
+            <div class="api-key-row">
+                <input
+                    type="password"
+                    id="api-key"
+                    class="input"
+                    placeholder="r8_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    autocomplete="off"
+                >
+                <button class="btn btn-secondary" id="save-key">保存</button>
+            </div>
+            <p class="note">APIキーはブラウザのローカルストレージのみに保存されます</p>
+        </section>
+
+        <section class="upload-section card">
+            <div class="drop-zone" id="drop-zone">
+                <div class="drop-zone-content">
+                    <div class="drop-icon">🖼️</div>
+                    <p class="drop-text">写真をドラッグ＆ドロップ</p>
+                    <p class="drop-or">または</p>
+                    <button class="btn btn-primary" id="upload-btn">ファイルを選択</button>
+                    <p class="drop-hint">JPEG・PNG・WebP 対応</p>
+                </div>
+                <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp" hidden>
+            </div>
+        </section>
+
+        <section class="settings-section card" id="settings-section" hidden>
+            <label class="label" for="strength">
+                変換強度:
+                <span class="strength-badge" id="strength-value">70</span>%
+            </label>
+            <input type="range" id="strength" class="slider" min="30" max="90" value="70">
+            <p class="note">低いほど元の写真に近く、高いほどジブリ風に大きく変換されます</p>
+        </section>
+
+        <section class="images-section" id="images-section" hidden>
+            <div class="image-panel">
+                <h3 class="panel-title">オリジナル</h3>
+                <img id="original-img" class="preview-img" alt="オリジナル画像">
+            </div>
+            <div class="arrow-container">
+                <div class="arrow">✦</div>
+            </div>
+            <div class="image-panel">
+                <h3 class="panel-title">ジブリ風</h3>
+                <div class="result-placeholder" id="result-placeholder">
+                    <span class="placeholder-text">変換後に表示されます</span>
+                </div>
+                <img id="result-img" class="preview-img" alt="ジブリ風画像" hidden>
+            </div>
+        </section>
+
+        <div class="action-row" id="convert-section" hidden>
+            <button class="btn btn-convert" id="convert-btn">
+                <span class="btn-icon">✨</span> ジブリ風に変換
+            </button>
+        </div>
+
+        <div class="loading" id="loading" hidden>
+            <div class="totoro-loader">
+                <div class="loader-dots">
+                    <span></span><span></span><span></span>
+                </div>
+            </div>
+            <p class="loading-text" id="loading-text">魔法をかけています...</p>
+        </div>
+
+        <div class="action-row" id="download-section" hidden>
+            <button class="btn btn-download" id="download-btn">
+                <span class="btn-icon">⬇️</span> 画像をダウンロード
+            </button>
+            <button class="btn btn-secondary" id="reset-btn">別の写真を試す</button>
+        </div>
+
+        <div class="error-box" id="error-box" hidden>
+            <span class="error-icon">⚠️</span>
+            <span id="error-message"></span>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>Powered by Replicate API & Stable Diffusion</p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
