@@ -234,28 +234,32 @@ async function handleConvert() {
    Replicate API
    ============================ */
 async function createPrediction(apiKey, imageDataUrl, strength) {
-    const response = await fetch(
-        `${REPLICATE_API}/models/${MODEL_OWNER}/${MODEL_NAME}/predictions`,
-        {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-                'Prefer': 'wait',
-            },
-            body: JSON.stringify({
-                input: {
-                    image: imageDataUrl,
-                    prompt: GHIBLI_PROMPT,
-                    negative_prompt: NEGATIVE_PROMPT,
-                    prompt_strength: strength,
-                    num_outputs: 1,
-                    num_inference_steps: 30,
-                    guidance_scale: 7.5,
+    let response;
+    try {
+        response = await fetch(
+            `${REPLICATE_API}/models/${MODEL_OWNER}/${MODEL_NAME}/predictions`,
+            {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
                 },
-            }),
-        }
-    );
+                body: JSON.stringify({
+                    input: {
+                        image: imageDataUrl,
+                        prompt: GHIBLI_PROMPT,
+                        negative_prompt: NEGATIVE_PROMPT,
+                        prompt_strength: strength,
+                        num_outputs: 1,
+                        num_inference_steps: 30,
+                        guidance_scale: 7.5,
+                    },
+                }),
+            }
+        );
+    } catch {
+        throw new Error('Replicate API に接続できませんでした。ネットワーク接続とAPIキーを確認してください。');
+    }
 
     if (!response.ok) {
         const err = await response.json().catch(() => ({}));
