@@ -1,7 +1,8 @@
 'use strict';
 
 const REPLICATE_API = 'https://api.replicate.com/v1';
-const MODEL_VERSION = '9a9b6aa5ac2793993aaaff48fd0e05fc5be213bc85a0bafd24e578d3bb81e628';
+const MODEL_OWNER = 'stability-ai';
+const MODEL_NAME  = 'stable-diffusion-img2img';
 
 const STYLE_PRESETS = {
     general: {
@@ -83,36 +84,36 @@ const MAX_POLL_ATTEMPTS = 100;
    ============================ */
 let currentResultUrl = null;
 let currentFileName  = null;
-let currentPreset = DEFAULT_PRESET;
+let currentPreset    = DEFAULT_PRESET;
 
 /* ============================
    DOM 参照
    ============================ */
 const $ = id => document.getElementById(id);
 
-const apiKeyInput      = $('api-key');
-const saveKeyBtn       = $('save-key');
-const dropZone         = $('drop-zone');
-const fileInput        = $('file-input');
-const uploadBtn        = $('upload-btn');
-const settingsSection  = $('settings-section');
-const strengthSlider   = $('strength');
-const strengthValue    = $('strength-value');
-const imagesSection    = $('images-section');
-const originalImg      = $('original-img');
-const resultImg        = $('result-img');
+const apiKeyInput       = $('api-key');
+const saveKeyBtn        = $('save-key');
+const dropZone          = $('drop-zone');
+const fileInput         = $('file-input');
+const uploadBtn         = $('upload-btn');
+const settingsSection   = $('settings-section');
+const strengthSlider    = $('strength');
+const strengthValue     = $('strength-value');
+const imagesSection     = $('images-section');
+const originalImg       = $('original-img');
+const resultImg         = $('result-img');
 const resultPlaceholder = $('result-placeholder');
-const convertSection   = $('convert-section');
-const convertBtn       = $('convert-btn');
-const loadingEl        = $('loading');
-const loadingText      = $('loading-text');
-const downloadSection  = $('download-section');
-const downloadBtn      = $('download-btn');
-const resetBtn         = $('reset-btn');
-const errorBox         = $('error-box');
-const errorMessage     = $('error-message');
-const retryBtn         = $('retry-btn');
-const filenameLabel    = $('filename-label');
+const convertSection    = $('convert-section');
+const convertBtn        = $('convert-btn');
+const loadingEl         = $('loading');
+const loadingText       = $('loading-text');
+const downloadSection   = $('download-section');
+const downloadBtn       = $('download-btn');
+const resetBtn          = $('reset-btn');
+const errorBox          = $('error-box');
+const errorMessage      = $('error-message');
+const retryBtn          = $('retry-btn');
+const filenameLabel     = $('filename-label');
 
 /* ============================
    初期化
@@ -133,7 +134,7 @@ const filenameLabel    = $('filename-label');
     dropZone.addEventListener('dragover',  onDragOver);
     dropZone.addEventListener('dragleave', onDragLeave);
     dropZone.addEventListener('drop',      onDrop);
-    dropZone.addEventListener('click',     e => {
+    dropZone.addEventListener('click', e => {
         if (e.target === dropZone || e.target.closest('.drop-zone-content')) {
             if (!e.target.closest('.btn')) fileInput.click();
         }
@@ -256,7 +257,6 @@ function resizeImageToBase64(imgElement, maxSize) {
             else         { w = Math.round(w * maxSize / h); h = maxSize; }
         }
 
-        // Stable Diffusion は 64 の倍数を推奨
         w = Math.round(w / 64) * 64 || 64;
         h = Math.round(h / 64) * 64 || 64;
 
@@ -289,16 +289,10 @@ async function handleConvert() {
     currentResultUrl = null;
 
     try {
-        setLoadingText('📐 画像を準備しています...');
         const base64Image = await resizeImageToBase64(originalImg, MAX_IMAGE_SIZE);
         const strength = parseInt(strengthSlider.value, 10) / 100;
 
-<<<<<<< HEAD
-        setLoadingText('📤 リクエストを送信しています...');
-=======
-        setLoadingText(`「${STYLE_PRESETS[currentPreset].label}」スタイルで魔法をかけています... ✨`);
-
->>>>>>> dda953c (Add Ghibli movie style presets to photo converter)
+        setLoadingText(`📤 「${STYLE_PRESETS[currentPreset].label}」スタイルで送信中...`);
         const prediction = await createPrediction(apiKey, base64Image, strength);
 
         let resultUrl;
@@ -330,43 +324,22 @@ async function handleConvert() {
    Replicate API
    ============================ */
 async function createPrediction(apiKey, imageDataUrl, strength) {
-<<<<<<< HEAD
+    const preset = STYLE_PRESETS[currentPreset];
     let response;
     try {
         response = await fetch(
-            `${REPLICATE_API}/predictions`,
+            `${REPLICATE_API}/models/${MODEL_OWNER}/${MODEL_NAME}/predictions`,
             {
                 method: 'POST',
                 headers: {
                     'Authorization': `Token ${apiKey}`,
                     'Content-Type': 'application/json',
-=======
-    const response = await fetch(
-        `${REPLICATE_API}/models/${MODEL_OWNER}/${MODEL_NAME}/predictions`,
-        {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-                'Prefer': 'wait',
-            },
-            body: JSON.stringify({
-                input: {
-                    image: imageDataUrl,
-                    prompt: STYLE_PRESETS[currentPreset].prompt,
-                    negative_prompt: STYLE_PRESETS[currentPreset].negativePrompt,
-                    prompt_strength: strength,
-                    num_outputs: 1,
-                    num_inference_steps: 30,
-                    guidance_scale: 7.5,
->>>>>>> dda953c (Add Ghibli movie style presets to photo converter)
                 },
                 body: JSON.stringify({
-                    version: MODEL_VERSION,
                     input: {
                         image: imageDataUrl,
-                        prompt: GHIBLI_PROMPT,
-                        negative_prompt: NEGATIVE_PROMPT,
+                        prompt: preset.prompt,
+                        negative_prompt: preset.negativePrompt,
                         prompt_strength: strength,
                         num_outputs: 1,
                         num_inference_steps: 30,
@@ -375,16 +348,20 @@ async function createPrediction(apiKey, imageDataUrl, strength) {
                 }),
             }
         );
-    } catch {
-        throw new Error('Replicate API に接続できませんでした。ネットワーク接続とAPIキーを確認してください。');
+    } catch (err) {
+        throw new Error(
+            'Replicate API に接続できませんでした。' +
+            'ネットワーク接続とAPIキーを確認してください。' +
+            (err && err.message ? `（${err.message}）` : '')
+        );
     }
 
     if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
+        const errBody = await response.json().catch(() => ({}));
         if (response.status === 401) throw new Error('APIキーが無効です。Replicate のダッシュボードで確認してください。');
-        if (response.status === 422) throw new Error('入力パラメータが無効です: ' + (err.detail || ''));
+        if (response.status === 422) throw new Error('入力パラメータが無効です: ' + (errBody.detail || ''));
         if (response.status === 429) throw new Error('APIリクエスト数の上限に達しました。しばらく待ってから再試行してください。');
-        throw new Error(`API エラー (${response.status}): ${err.detail || response.statusText}`);
+        throw new Error(`API エラー (${response.status}): ${errBody.detail || response.statusText}`);
     }
 
     return response.json();
@@ -414,12 +391,13 @@ async function pollPrediction(apiKey, predictionUrl) {
                 setLoadingText(`✨ ジブリの魔法をかけています... ${pct}%（${elapsed}秒）`);
                 break;
             }
-            case 'succeeded':
+            case 'succeeded': {
                 const output = prediction.output;
                 if (!output || (Array.isArray(output) && output.length === 0)) {
                     throw new Error('変換結果が空でした。もう一度お試しください。');
                 }
                 return Array.isArray(output) ? output[0] : output;
+            }
             case 'failed':
                 throw new Error('変換に失敗しました: ' + (prediction.error || '不明なエラー'));
             case 'canceled':
@@ -448,7 +426,6 @@ async function handleDownload() {
         a.click();
         URL.revokeObjectURL(url);
     } catch {
-        // フォールバック: 直接リンクを開く
         window.open(currentResultUrl, '_blank');
     }
 }
