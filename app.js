@@ -1,8 +1,7 @@
 'use strict';
 
 const REPLICATE_API = 'https://api.replicate.com/v1';
-const MODEL_OWNER = 'stability-ai';
-const MODEL_NAME = 'stable-diffusion-img2img';
+const MODEL_VERSION = '9a9b6aa5ac2793993aaaff48fd0e05fc5be213bc85a0bafd24e578d3bb81e628';
 
 const GHIBLI_PROMPT =
     'studio ghibli style, ghibli anime, miyazaki, hand drawn animation, ' +
@@ -21,6 +20,7 @@ const MAX_POLL_ATTEMPTS = 100;
    状態
    ============================ */
 let currentResultUrl = null;
+let currentFileName  = null;
 
 /* ============================
    DOM 参照
@@ -48,6 +48,8 @@ const downloadBtn      = $('download-btn');
 const resetBtn         = $('reset-btn');
 const errorBox         = $('error-box');
 const errorMessage     = $('error-message');
+const retryBtn         = $('retry-btn');
+const filenameLabel    = $('filename-label');
 
 /* ============================
    初期化
@@ -63,6 +65,7 @@ const errorMessage     = $('error-message');
     convertBtn.addEventListener('click', handleConvert);
     downloadBtn.addEventListener('click', handleDownload);
     resetBtn.addEventListener('click', handleReset);
+    retryBtn.addEventListener('click', handleConvert);
 
     dropZone.addEventListener('dragover',  onDragOver);
     dropZone.addEventListener('dragleave', onDragLeave);
@@ -131,10 +134,13 @@ function onDrop(e) {
 function loadImageFile(file) {
     hideError();
     currentResultUrl = null;
+    currentFileName  = file.name;
 
     const reader = new FileReader();
     reader.onload = e => {
         originalImg.src = e.target.result;
+        filenameLabel.textContent = file.name;
+        filenameLabel.hidden = false;
         showElement(imagesSection);
         showElement(settingsSection);
         showElement(convertSection);
@@ -184,20 +190,31 @@ async function handleConvert() {
     }
 
     hideError();
-    setLoading(true, '画像を準備中...');
+    setLoading(true, '📐 画像を準備しています...');
     hideElement(downloadSection);
     resultImg.hidden = true;
     showElement(resultPlaceholder);
     currentResultUrl = null;
 
     try {
+        setLoadingText('📐 画像を準備しています...');
         const base64Image = await resizeImageToBase64(originalImg, MAX_IMAGE_SIZE);
         const strength = parseInt(strengthSlider.value, 10) / 100;
 
-        setLoadingText('ジブリの魔法をかけています... ✨');
-
+        setLoadingText('📤 リクエストを送信しています...');
         const prediction = await createPrediction(apiKey, base64Image, strength);
-        const resultUrl  = await pollPrediction(apiKey, prediction.urls.get);
+
+        let resultUrl;
+        if (prediction.status === 'succeeded') {
+            setLoadingText('✅ 変換が完了しました！');
+            const output = prediction.output;
+            if (!output || (Array.isArray(output) && output.length === 0)) {
+                throw new Error('変換結果が空でした。もう一度お試しください。');
+            }
+            resultUrl = Array.isArray(output) ? output[0] : output;
+        } else {
+            resultUrl = await pollPrediction(apiKey, prediction.urls?.get);
+        }
 
         resultImg.src = resultUrl;
         resultImg.hidden = false;
@@ -216,28 +233,33 @@ async function handleConvert() {
    Replicate API
    ============================ */
 async function createPrediction(apiKey, imageDataUrl, strength) {
-    const response = await fetch(
-        `${REPLICATE_API}/models/${MODEL_OWNER}/${MODEL_NAME}/predictions`,
-        {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-                'Prefer': 'wait',
-            },
-            body: JSON.stringify({
-                input: {
-                    image: imageDataUrl,
-                    prompt: GHIBLI_PROMPT,
-                    negative_prompt: NEGATIVE_PROMPT,
-                    prompt_strength: strength,
-                    num_outputs: 1,
-                    num_inference_steps: 30,
-                    guidance_scale: 7.5,
+    let response;
+    try {
+        response = await fetch(
+            `${REPLICATE_API}/predictions`,
+            {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Token ${apiKey}`,
+                    'Content-Type': 'application/json',
                 },
-            }),
-        }
-    );
+                body: JSON.stringify({
+                    version: MODEL_VERSION,
+                    input: {
+                        image: imageDataUrl,
+                        prompt: GHIBLI_PROMPT,
+                        negative_prompt: NEGATIVE_PROMPT,
+                        prompt_strength: strength,
+                        num_outputs: 1,
+                        num_inference_steps: 30,
+                        guidance_scale: 7.5,
+                    },
+                }),
+            }
+        );
+    } catch {
+        throw new Error('Replicate API に接続できませんでした。ネットワーク接続とAPIキーを確認してください。');
+    }
 
     if (!response.ok) {
         const err = await response.json().catch(() => ({}));
@@ -255,7 +277,7 @@ async function pollPrediction(apiKey, predictionUrl) {
         await sleep(POLL_INTERVAL_MS);
 
         const response = await fetch(predictionUrl, {
-            headers: { 'Authorization': `Bearer ${apiKey}` },
+            headers: { 'Authorization': `Token ${apiKey}` },
         });
 
         if (!response.ok) {
@@ -267,11 +289,13 @@ async function pollPrediction(apiKey, predictionUrl) {
 
         switch (prediction.status) {
             case 'starting':
-                setLoadingText(`開始待ち... (${elapsed}秒)`);
+                setLoadingText(`⏳ 処理を開始しています...（${elapsed}秒）`);
                 break;
-            case 'processing':
-                setLoadingText(`ジブリの魔法をかけています... ✨ (${elapsed}秒)`);
+            case 'processing': {
+                const pct = Math.min(Math.round(elapsed / 35 * 100), 95);
+                setLoadingText(`✨ ジブリの魔法をかけています... ${pct}%（${elapsed}秒）`);
                 break;
+            }
             case 'succeeded':
                 const output = prediction.output;
                 if (!output || (Array.isArray(output) && output.length === 0)) {
@@ -297,9 +321,12 @@ async function handleDownload() {
         const response = await fetch(currentResultUrl);
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
+        const prefix = currentFileName
+            ? currentFileName.replace(/\.[^.]+$/, '')
+            : 'ghibli';
         const a = document.createElement('a');
         a.href = url;
-        a.download = `ghibli_${Date.now()}.png`;
+        a.download = `${prefix}_ghibli_${Date.now()}.png`;
         a.click();
         URL.revokeObjectURL(url);
     } catch {
@@ -317,6 +344,9 @@ function handleReset() {
     resultImg.src = '';
     resultImg.hidden = true;
     currentResultUrl = null;
+    currentFileName  = null;
+    filenameLabel.textContent = '';
+    filenameLabel.hidden = true;
     hideElement(imagesSection);
     hideElement(settingsSection);
     hideElement(convertSection);
@@ -344,9 +374,13 @@ function hideElement(el) { el.hidden = true; }
 function showError(msg) {
     errorMessage.textContent = msg;
     showElement(errorBox);
+    retryBtn.hidden = !originalImg.src;
     errorBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function hideError() { hideElement(errorBox); }
+function hideError() {
+    hideElement(errorBox);
+    retryBtn.hidden = true;
+}
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
