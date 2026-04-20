@@ -3,14 +3,76 @@
 const REPLICATE_API = 'https://api.replicate.com/v1';
 const MODEL_VERSION = '9a9b6aa5ac2793993aaaff48fd0e05fc5be213bc85a0bafd24e578d3bb81e628';
 
-const GHIBLI_PROMPT =
-    'studio ghibli style, ghibli anime, miyazaki, hand drawn animation, ' +
-    'soft watercolor, beautiful natural scenery, warm lighting, highly detailed, ' +
-    'dreamy atmosphere, whimsical, pastel colors';
+const STYLE_PRESETS = {
+    general: {
+        label: '一般ジブリ',
+        emoji: '🌿',
+        description: '幻想的なジブリの世界',
+        prompt:
+            'studio ghibli style, ghibli anime, miyazaki, hand drawn animation, ' +
+            'soft watercolor, beautiful natural scenery, warm lighting, highly detailed, ' +
+            'dreamy atmosphere, whimsical, pastel colors',
+        negativePrompt:
+            'realistic, photographic, 3d render, cgi, ugly, blurry, dark, horror, ' +
+            'low quality, deformed, disfigured',
+    },
+    totoro: {
+        label: 'となりのトトロ',
+        emoji: '🌳',
+        description: '懐かしい田舎の風景',
+        prompt:
+            'studio ghibli style, My Neighbor Totoro, lush green countryside, ' +
+            'warm golden sunlight filtering through trees, rural Japan, ' +
+            'soft watercolor, hand drawn animation, large camphor tree, ' +
+            'childhood wonder, peaceful summer atmosphere, highly detailed, miyazaki style',
+        negativePrompt:
+            'realistic, photographic, 3d render, cgi, urban, dark, horror, ' +
+            'low quality, deformed, disfigured, winter, snow',
+    },
+    spiritedAway: {
+        label: '千と千尋の神隠し',
+        emoji: '🏮',
+        description: '神秘的な湯屋の世界',
+        prompt:
+            'studio ghibli style, Spirited Away, magical bathhouse, vibrant colors, ' +
+            'glowing paper lanterns, spirits and magical creatures, ' +
+            'rich saturated colors, hand drawn animation, miyazaki, ' +
+            'detailed architecture, mystical atmosphere, highly detailed',
+        negativePrompt:
+            'realistic, photographic, 3d render, cgi, ugly, blurry, ' +
+            'low quality, deformed, disfigured, washed out, desaturated',
+    },
+    mononoke: {
+        label: 'もののけ姫',
+        emoji: '🐺',
+        description: '古の森と精霊の世界',
+        prompt:
+            'studio ghibli style, Princess Mononoke, ancient primeval forest, ' +
+            'mystical kodama tree spirits, lush moss-covered trees, ' +
+            'dramatic atmospheric lighting, deep shadows and dappled light, ' +
+            'hand drawn animation, miyazaki, muted earthy tones with vivid accents, ' +
+            'detailed foliage, epic and contemplative mood',
+        negativePrompt:
+            'realistic, photographic, 3d render, cgi, low quality, deformed, ' +
+            'disfigured, bright cheerful colors, cute, kawaii, modern',
+    },
+    laputa: {
+        label: '天空の城ラピュタ',
+        emoji: '⚙️',
+        description: '空中冒険とスチームパンク',
+        prompt:
+            'studio ghibli style, Castle in the Sky Laputa, ' +
+            'steampunk mechanical structures, vast open sky, dramatic cloudscape, ' +
+            'adventure atmosphere, flying machines, ancient floating ruins, ' +
+            'hand drawn animation, miyazaki, warm adventure lighting, ' +
+            'detailed mechanical gears and stone, sweeping aerial perspective, highly detailed',
+        negativePrompt:
+            'realistic, photographic, 3d render, cgi, ugly, blurry, ' +
+            'low quality, deformed, dark horror, underground, claustrophobic',
+    },
+};
 
-const NEGATIVE_PROMPT =
-    'realistic, photographic, 3d render, cgi, ugly, blurry, dark, horror, ' +
-    'low quality, deformed, disfigured';
+const DEFAULT_PRESET = 'general';
 
 const MAX_IMAGE_SIZE = 768;
 const POLL_INTERVAL_MS = 3000;
@@ -21,6 +83,7 @@ const MAX_POLL_ATTEMPTS = 100;
    ============================ */
 let currentResultUrl = null;
 let currentFileName  = null;
+let currentPreset = DEFAULT_PRESET;
 
 /* ============================
    DOM 参照
@@ -75,7 +138,36 @@ const filenameLabel    = $('filename-label');
             if (!e.target.closest('.btn')) fileInput.click();
         }
     });
+
+    buildPresetSelector();
 })();
+
+/* ============================
+   スタイルプリセット
+   ============================ */
+function buildPresetSelector() {
+    const grid = $('preset-grid');
+    Object.entries(STYLE_PRESETS).forEach(([key, preset]) => {
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'preset-card' + (key === DEFAULT_PRESET ? ' preset-card--active' : '');
+        card.dataset.preset = key;
+        card.innerHTML =
+            `<span class="preset-emoji">${preset.emoji}</span>` +
+            `<span class="preset-label">${preset.label}</span>` +
+            `<span class="preset-desc">${preset.description}</span>`;
+        card.addEventListener('click', () => selectPreset(key));
+        grid.appendChild(card);
+    });
+}
+
+function selectPreset(key) {
+    if (!STYLE_PRESETS[key]) return;
+    currentPreset = key;
+    document.querySelectorAll('.preset-card').forEach(card => {
+        card.classList.toggle('preset-card--active', card.dataset.preset === key);
+    });
+}
 
 /* ============================
    APIキー管理
@@ -201,7 +293,12 @@ async function handleConvert() {
         const base64Image = await resizeImageToBase64(originalImg, MAX_IMAGE_SIZE);
         const strength = parseInt(strengthSlider.value, 10) / 100;
 
+<<<<<<< HEAD
         setLoadingText('📤 リクエストを送信しています...');
+=======
+        setLoadingText(`「${STYLE_PRESETS[currentPreset].label}」スタイルで魔法をかけています... ✨`);
+
+>>>>>>> dda953c (Add Ghibli movie style presets to photo converter)
         const prediction = await createPrediction(apiKey, base64Image, strength);
 
         let resultUrl;
@@ -233,6 +330,7 @@ async function handleConvert() {
    Replicate API
    ============================ */
 async function createPrediction(apiKey, imageDataUrl, strength) {
+<<<<<<< HEAD
     let response;
     try {
         response = await fetch(
@@ -242,6 +340,26 @@ async function createPrediction(apiKey, imageDataUrl, strength) {
                 headers: {
                     'Authorization': `Token ${apiKey}`,
                     'Content-Type': 'application/json',
+=======
+    const response = await fetch(
+        `${REPLICATE_API}/models/${MODEL_OWNER}/${MODEL_NAME}/predictions`,
+        {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+                'Prefer': 'wait',
+            },
+            body: JSON.stringify({
+                input: {
+                    image: imageDataUrl,
+                    prompt: STYLE_PRESETS[currentPreset].prompt,
+                    negative_prompt: STYLE_PRESETS[currentPreset].negativePrompt,
+                    prompt_strength: strength,
+                    num_outputs: 1,
+                    num_inference_steps: 30,
+                    guidance_scale: 7.5,
+>>>>>>> dda953c (Add Ghibli movie style presets to photo converter)
                 },
                 body: JSON.stringify({
                     version: MODEL_VERSION,
@@ -353,6 +471,7 @@ function handleReset() {
     hideElement(downloadSection);
     hideError();
     showElement(resultPlaceholder);
+    selectPreset(DEFAULT_PRESET);
 }
 
 /* ============================
