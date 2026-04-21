@@ -320,7 +320,7 @@ async function createPrediction(imageDataUrl, strength) {
         const errBody = await response.json().catch(() => ({}));
         if (response.status === 422) throw new Error('入力パラメータが無効です: ' + (errBody.detail || ''));
         if (response.status === 429) throw new Error('リクエスト数の上限に達しました。しばらく待ってから再試行してください。');
-        throw new Error(`サーバーエラー (${response.status}): ${errBody.detail || response.statusText}`);
+        throw new Error(`サーバーエラー (${response.status}): ${errBody.error || errBody.detail || response.statusText}`);
     }
 
     return response.json();
