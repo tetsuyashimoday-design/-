@@ -264,18 +264,15 @@ async function handleConvert() {
         setLoadingText(`📤 「${STYLE_PRESETS[currentPreset].label}」スタイルで送信中...`);
         const prediction = await createPrediction(base64Image, strength);
 
-        let resultUrl;
-        if (prediction.status === 'succeeded') {
-            setLoadingText('✅ 変換が完了しました！');
-            const output = prediction.output;
-            if (!output || (Array.isArray(output) && output.length === 0)) {
-                throw new Error('変換結果が空でした。もう一度お試しください。');
-            }
-            resultUrl = Array.isArray(output) ? output[0] : output;
-        } else {
-            const predictionId = prediction.id || prediction.urls?.get?.split('/predictions/')[1];
-            resultUrl = await pollPrediction(predictionId);
+        setLoadingText('✅ 変換が完了しました！');
+        if (prediction.status !== 'succeeded') {
+            throw new Error('変換に失敗しました: ' + (prediction.error || '不明なエラー'));
         }
+        const output = prediction.output;
+        if (!output || (Array.isArray(output) && output.length === 0)) {
+            throw new Error('変換結果が空でした。もう一度お試しください。');
+        }
+        const resultUrl = Array.isArray(output) ? output[0] : output;
 
         resultImg.src = resultUrl;
         resultImg.hidden = false;
@@ -373,18 +370,14 @@ async function pollPrediction(predictionId) {
 async function handleDownload() {
     if (!currentResultUrl) return;
 
+    const prefix = currentFileName
+        ? currentFileName.replace(/\.[^.]+$/, '')
+        : 'ghibli';
     try {
-        const response = await fetch(currentResultUrl);
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        const prefix = currentFileName
-            ? currentFileName.replace(/\.[^.]+$/, '')
-            : 'ghibli';
         const a = document.createElement('a');
-        a.href = url;
+        a.href = currentResultUrl;
         a.download = `${prefix}_ghibli_${Date.now()}.png`;
         a.click();
-        URL.revokeObjectURL(url);
     } catch {
         window.open(currentResultUrl, '_blank');
     }
