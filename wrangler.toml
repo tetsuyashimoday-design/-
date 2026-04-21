@@ -1,0 +1,6 @@
+name = "ghibli-converter"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# デプロイ後に以下のコマンドでAPIキーをセット:
+# wrangler secret put REPLICATE_API_KEY

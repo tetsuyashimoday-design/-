@@ -1,8 +1,7 @@
 'use strict';
 
-const REPLICATE_API = 'https://api.replicate.com/v1';
-const MODEL_OWNER = 'stability-ai';
-const MODEL_NAME  = 'stable-diffusion-img2img';
+// Cloudflare Worker をデプロイ後にこの URL を変更してください
+const WORKER_URL = 'https://ghibli-converter.YOUR-SUBDOMAIN.workers.dev';
 
 const STYLE_PRESETS = {
     general: {
@@ -75,7 +74,7 @@ const STYLE_PRESETS = {
 
 const DEFAULT_PRESET = 'general';
 
-const MAX_IMAGE_SIZE = 768;
+const MAX_IMAGE_SIZE  = 768;
 const POLL_INTERVAL_MS = 3000;
 const MAX_POLL_ATTEMPTS = 100;
 
@@ -91,8 +90,6 @@ let currentPreset    = DEFAULT_PRESET;
    ============================ */
 const $ = id => document.getElementById(id);
 
-const apiKeyInput       = $('api-key');
-const saveKeyBtn        = $('save-key');
 const dropZone          = $('drop-zone');
 const fileInput         = $('file-input');
 const uploadBtn         = $('upload-btn');
@@ -119,10 +116,6 @@ const filenameLabel     = $('filename-label');
    初期化
    ============================ */
 (function init() {
-    const savedKey = localStorage.getItem('replicate_api_key');
-    if (savedKey) apiKeyInput.value = savedKey;
-
-    saveKeyBtn.addEventListener('click', saveApiKey);
     uploadBtn.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', handleFileSelect);
     strengthSlider.addEventListener('input', updateStrengthDisplay);
@@ -168,25 +161,6 @@ function selectPreset(key) {
     document.querySelectorAll('.preset-card').forEach(card => {
         card.classList.toggle('preset-card--active', card.dataset.preset === key);
     });
-}
-
-/* ============================
-   APIキー管理
-   ============================ */
-function saveApiKey() {
-    const key = apiKeyInput.value.trim();
-    if (!key) {
-        showError('APIキーを入力してください。');
-        return;
-    }
-    localStorage.setItem('replicate_api_key', key);
-    hideError();
-    saveKeyBtn.textContent = '✓ 保存済';
-    setTimeout(() => { saveKeyBtn.textContent = '保存'; }, 2000);
-}
-
-function getApiKey() {
-    return (apiKeyInput.value.trim() || localStorage.getItem('replicate_api_key') || '').trim();
 }
 
 /* ============================
@@ -271,11 +245,6 @@ function resizeImageToBase64(imgElement, maxSize) {
    変換実行
    ============================ */
 async function handleConvert() {
-    const apiKey = getApiKey();
-    if (!apiKey) {
-        showError('Replicate APIキーを入力して「保存」してください。');
-        return;
-    }
     if (!originalImg.src) {
         showError('変換する画像を選択してください。');
         return;
@@ -293,7 +262,7 @@ async function handleConvert() {
         const strength = parseInt(strengthSlider.value, 10) / 100;
 
         setLoadingText(`📤 「${STYLE_PRESETS[currentPreset].label}」スタイルで送信中...`);
-        const prediction = await createPrediction(apiKey, base64Image, strength);
+        const prediction = await createPrediction(base64Image, strength);
 
         let resultUrl;
         if (prediction.status === 'succeeded') {
@@ -304,7 +273,8 @@ async function handleConvert() {
             }
             resultUrl = Array.isArray(output) ? output[0] : output;
         } else {
-            resultUrl = await pollPrediction(apiKey, prediction.urls?.get);
+            const predictionId = prediction.id || prediction.urls?.get?.split('/predictions/')[1];
+            resultUrl = await pollPrediction(predictionId);
         }
 
         resultImg.src = resultUrl;
@@ -314,66 +284,56 @@ async function handleConvert() {
         showElement(downloadSection);
 
     } catch (err) {
-        showError(err.message || '変換中にエラーが発生しました。APIキーと画像を確認してください。');
+        showError(err.message || '変換中にエラーが発生しました。もう一度お試しください。');
     } finally {
         setLoading(false);
     }
 }
 
 /* ============================
-   Replicate API
+   Worker API
    ============================ */
-async function createPrediction(apiKey, imageDataUrl, strength) {
+async function createPrediction(imageDataUrl, strength) {
     const preset = STYLE_PRESETS[currentPreset];
     let response;
     try {
-        response = await fetch(
-            `${REPLICATE_API}/models/${MODEL_OWNER}/${MODEL_NAME}/predictions`,
-            {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Token ${apiKey}`,
-                    'Content-Type': 'application/json',
+        response = await fetch(`${WORKER_URL}/predict`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                input: {
+                    image: imageDataUrl,
+                    prompt: preset.prompt,
+                    negative_prompt: preset.negativePrompt,
+                    prompt_strength: strength,
+                    num_outputs: 1,
+                    num_inference_steps: 30,
+                    guidance_scale: 7.5,
                 },
-                body: JSON.stringify({
-                    input: {
-                        image: imageDataUrl,
-                        prompt: preset.prompt,
-                        negative_prompt: preset.negativePrompt,
-                        prompt_strength: strength,
-                        num_outputs: 1,
-                        num_inference_steps: 30,
-                        guidance_scale: 7.5,
-                    },
-                }),
-            }
-        );
+            }),
+        });
     } catch (err) {
         throw new Error(
-            'Replicate API に接続できませんでした。' +
-            'ネットワーク接続とAPIキーを確認してください。' +
+            'サーバーに接続できませんでした。しばらく待ってから再試行してください。' +
             (err && err.message ? `（${err.message}）` : '')
         );
     }
 
     if (!response.ok) {
         const errBody = await response.json().catch(() => ({}));
-        if (response.status === 401) throw new Error('APIキーが無効です。Replicate のダッシュボードで確認してください。');
         if (response.status === 422) throw new Error('入力パラメータが無効です: ' + (errBody.detail || ''));
-        if (response.status === 429) throw new Error('APIリクエスト数の上限に達しました。しばらく待ってから再試行してください。');
-        throw new Error(`API エラー (${response.status}): ${errBody.detail || response.statusText}`);
+        if (response.status === 429) throw new Error('リクエスト数の上限に達しました。しばらく待ってから再試行してください。');
+        throw new Error(`サーバーエラー (${response.status}): ${errBody.detail || response.statusText}`);
     }
 
     return response.json();
 }
 
-async function pollPrediction(apiKey, predictionUrl) {
+async function pollPrediction(predictionId) {
     for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {
         await sleep(POLL_INTERVAL_MS);
 
-        const response = await fetch(predictionUrl, {
-            headers: { 'Authorization': `Token ${apiKey}` },
-        });
+        const response = await fetch(`${WORKER_URL}/predictions/${predictionId}`);
 
         if (!response.ok) {
             throw new Error(`ポーリングエラー (${response.status})`);
