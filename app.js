@@ -1,7 +1,7 @@
 'use strict';
 
 // Cloudflare Worker をデプロイ後にこの URL を変更してください
-const WORKER_URL = 'https://ghibli-converter.YOUR-SUBDOMAIN.workers.dev';
+const WORKER_URL = 'https://ghibli-converter.tetsuya-shimoda-y.workers.dev';
 
 const STYLE_PRESETS = {
     general: {
