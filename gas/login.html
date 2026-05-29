@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ログイン - スタッフ行動管理システム</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
+    background: linear-gradient(135deg, #1a237e 0%, #283593 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 48px 40px;
+    width: 100%;
+    max-width: 420px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    text-align: center;
+  }
+  .logo { font-size: 40px; margin-bottom: 16px; }
+  h1 { font-size: 18px; color: #1a237e; margin-bottom: 8px; }
+  p { color: #666; font-size: 13px; margin-bottom: 32px; }
+  .notice {
+    background: #fff3e0;
+    border-left: 4px solid #ff9800;
+    padding: 12px 16px;
+    border-radius: 4px;
+    text-align: left;
+    font-size: 13px;
+    color: #e65100;
+    margin-bottom: 24px;
+  }
+  .btn {
+    display: block;
+    width: 100%;
+    padding: 14px;
+    background: #1a237e;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.2s;
+  }
+  .btn:hover { background: #283593; }
+  .footer { margin-top: 24px; font-size: 12px; color: #999; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">🏥</div>
+  <h1>スタッフ行動管理・勤務体制最適化システム</h1>
+  <p>機密情報保護システム - 認証済みユーザーのみアクセス可能</p>
+  <div class="notice">
+    ⚠ このシステムには機密性の高い情報が含まれます。<br>
+    アクセスには管理者による事前登録が必要です。
+  </div>
+  <a class="btn" href="<?= ScriptApp.getService().getUrl() ?>">
+    Googleアカウントでログイン
+  </a>
+  <div class="footer">
+    アクセス権限のない方はシステム管理者にお問い合わせください
+  </div>
+</div>
+</body>
+</html>

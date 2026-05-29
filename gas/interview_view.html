@@ -1,0 +1,375 @@
+<script>
+// ============================================================
+// 面談管理・文字起こし・議事録自動生成
+// ============================================================
+let recognition = null;
+let isRecording = false;
+let fullTranscript = '';
+
+async function renderInterviews(el) {
+  try {
+    const interviews = await callApi('get_interviews', {});
+
+    el.innerHTML = `
+      <div class="section-actions">
+        <div></div>
+        <button class="btn btn-primary" onclick="showInterviewForm()">＋ 面談を予定する</button>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🎤 面談一覧</div>
+        ${interviews.length === 0 ? '<div class="empty-state">面談の記録はありません</div>' : `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>面談ID</th><th>種別</th><th>対象者ID</th><th>予定日時</th><th>ステータス</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+              ${interviews.map(iv => `
+                <tr>
+                  <td><small>${iv.interview_id}</small></td>
+                  <td>${_interviewTypeName(iv.interview_type)}</td>
+                  <td>${iv.interviewee_id}</td>
+                  <td>${iv.scheduled_at ? new Date(iv.scheduled_at).toLocaleString('ja-JP') : '未定'}</td>
+                  <td><span class="badge badge-${iv.status}">${_interviewStatusLabel(iv.status)}</span></td>
+                  <td>
+                    ${iv.status === 'scheduled' ? `
+                      <button class="btn btn-sm btn-success" onclick="showTranscriptionUI('${iv.interview_id}', '${iv.interview_type}', '${iv.interviewee_id}')">
+                        🎤 記録する
+                      </button>` : `
+                      <button class="btn btn-sm btn-outline" onclick="showMinutes('${iv.interview_id}')">
+                        📄 議事録
+                      </button>`}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>`}
+      </div>
+    `;
+  } catch (e) {
+    el.innerHTML = `<div class="alert alert-danger">${e.message}</div>`;
+  }
+}
+
+function showInterviewForm() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'interviewFormModal';
+  modal.innerHTML = `
+    <div class="modal">
+      <div class="modal-title">🎤 面談予定の登録</div>
+      <div class="form-group">
+        <label>面談種別 *</label>
+        <select id="iv_type">
+          <option value="caregiver">訪問介護員面談</option>
+          <option value="victim_followup">被害者フォローアップ</option>
+          <option value="offender_guidance">加害者指導面談</option>
+          <option value="regular">定期面談</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>対象者ID *</label>
+        <input type="text" id="iv_interviewee" placeholder="スタッフID">
+      </div>
+      <div class="form-group">
+        <label>対象者名（議事録用）</label>
+        <input type="text" id="iv_interviewee_name" placeholder="氏名">
+      </div>
+      <div class="form-group">
+        <label>対象者メールアドレス（通知用）</label>
+        <input type="email" id="iv_interviewee_email" placeholder="example@company.com">
+      </div>
+      <div class="form-group">
+        <label>予定日時</label>
+        <input type="datetime-local" id="iv_scheduled">
+      </div>
+      <div class="form-group">
+        <label>場所</label>
+        <input type="text" id="iv_location" placeholder="例: 事務所 会議室A">
+      </div>
+      <div class="form-group">
+        <label>インシデントID（関連する場合）</label>
+        <input type="text" id="iv_incident" placeholder="INC-xxxxx">
+      </div>
+      <div class="form-group">
+        <label>備考</label>
+        <textarea id="iv_notes" style="min-height:60px" placeholder="面談の目的・注意事項など"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal('interviewFormModal')">キャンセル</button>
+        <button class="btn btn-primary" onclick="submitInterview()">登録する</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+async function submitInterview() {
+  const intervieweeId = document.getElementById('iv_interviewee').value;
+  if (!intervieweeId) { showAlert('対象者IDは必須です', 'danger'); return; }
+
+  const btn = event.target;
+  btn.disabled = true;
+  try {
+    await callApi('schedule_interview', {
+      interview_type: document.getElementById('iv_type').value,
+      interviewee_id: intervieweeId,
+      interviewee_email: document.getElementById('iv_interviewee_email').value,
+      scheduled_at: document.getElementById('iv_scheduled').value,
+      location: document.getElementById('iv_location').value,
+      incident_id: document.getElementById('iv_incident').value,
+      notes: document.getElementById('iv_notes').value,
+    });
+    closeModal('interviewFormModal');
+    showAlert('面談を登録しました', 'success');
+    renderInterviews(document.getElementById('contentArea'));
+  } catch (e) {
+    showAlert(e.message, 'danger');
+    btn.disabled = false;
+  }
+}
+
+// ============================================================
+// 文字起こし UI（Web Speech API）
+// ============================================================
+function showTranscriptionUI(interviewId, interviewType, intervieweeId) {
+  fullTranscript = '';
+  isRecording = false;
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'transcriptionModal';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:760px">
+      <div class="modal-title">🎤 面談記録 - ${_interviewTypeName(interviewType)}</div>
+
+      <div class="alert alert-info">
+        ブラウザのマイクを使って音声を文字起こしします。<br>
+        面談終了後「AIで要約・議事録作成」ボタンを押してください。
+      </div>
+
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab(this,'trans-tab1')">🎙 文字起こし</div>
+        <div class="tab" onclick="switchTab(this,'trans-tab2')">✏ テキスト直接入力</div>
+      </div>
+
+      <!-- 音声文字起こしタブ -->
+      <div id="trans-tab1" class="tab-content active">
+        <div id="recordingStatus" style="margin-bottom:8px"></div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <button class="btn btn-danger" id="btnRecord" onclick="startRecording()">
+            ● 録音開始
+          </button>
+          <button class="btn btn-outline" id="btnStop" onclick="stopRecording()" disabled>
+            ■ 録音停止
+          </button>
+          <button class="btn btn-outline btn-sm" onclick="clearTranscript()">クリア</button>
+        </div>
+        <div class="transcription-area">
+          <textarea id="transcriptDisplay"
+            style="min-height:200px;background:#fafafa;font-size:13px"
+            placeholder="録音ボタンを押すと文字起こしが始まります..."
+            onchange="fullTranscript=this.value"></textarea>
+        </div>
+        <div id="interimDisplay" style="font-size:12px;color:#999;min-height:20px;margin-top:4px;font-style:italic"></div>
+      </div>
+
+      <!-- 直接入力タブ -->
+      <div id="trans-tab2" class="tab-content">
+        <div class="form-group">
+          <label>面談内容を直接入力してください</label>
+          <textarea id="manualTranscript"
+            style="min-height:240px;font-size:13px"
+            placeholder="面談の会話・メモ・記録を入力してください"></textarea>
+        </div>
+        <button class="btn btn-sm btn-outline" onclick="syncManualTranscript()">
+          ↑ 文字起こし欄に反映する
+        </button>
+      </div>
+
+      <div id="aiResultArea" style="display:none">
+        <div class="ai-summary-box">
+          <div class="ai-summary-label">🤖 むすぼなAI 自動議事録</div>
+          <div id="aiSummaryText" style="white-space:pre-wrap;font-size:13px;line-height:1.7"></div>
+        </div>
+        <div style="margin-top:8px">
+          <a id="docLink" href="#" target="_blank" class="btn btn-sm btn-success" style="display:none">
+            📄 議事録Googleドキュメントを開く
+          </a>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeTranscriptionModal()">閉じる</button>
+        <button class="btn btn-primary" id="btnSummarize" onclick="summarizeAndSave('${interviewId}', '${intervieweeId}')">
+          🤖 AIで要約・議事録作成
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+function startRecording() {
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    showAlert('このブラウザは音声認識に対応していません。Chrome推奨です。', 'warning');
+    return;
+  }
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.lang = 'ja-JP';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+
+  recognition.onresult = (event) => {
+    let interim = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const transcript = event.results[i][0].transcript;
+      if (event.results[i].isFinal) {
+        fullTranscript += transcript + '\n';
+        document.getElementById('transcriptDisplay').value = fullTranscript;
+      } else {
+        interim += transcript;
+      }
+    }
+    document.getElementById('interimDisplay').textContent = interim;
+  };
+
+  recognition.onerror = (e) => {
+    showAlert('音声認識エラー: ' + e.error, 'danger');
+    stopRecording();
+  };
+
+  recognition.onend = () => {
+    if (isRecording) recognition.start(); // 連続録音
+  };
+
+  recognition.start();
+  isRecording = true;
+
+  document.getElementById('btnRecord').disabled = true;
+  document.getElementById('btnStop').disabled = false;
+  document.getElementById('recordingStatus').innerHTML =
+    '<div class="recording-indicator"><span class="recording-dot"></span>録音中...</div>';
+}
+
+function stopRecording() {
+  isRecording = false;
+  if (recognition) { recognition.stop(); recognition = null; }
+  document.getElementById('btnRecord').disabled = false;
+  document.getElementById('btnStop').disabled = true;
+  document.getElementById('recordingStatus').innerHTML =
+    '<div style="font-size:12px;color:#666">録音停止。内容を確認してから「AIで要約」ボタンを押してください。</div>';
+  document.getElementById('interimDisplay').textContent = '';
+}
+
+function clearTranscript() {
+  fullTranscript = '';
+  document.getElementById('transcriptDisplay').value = '';
+  document.getElementById('interimDisplay').textContent = '';
+}
+
+function syncManualTranscript() {
+  const manual = document.getElementById('manualTranscript').value;
+  fullTranscript = manual;
+  document.getElementById('transcriptDisplay').value = manual;
+  switchTab(document.querySelector('#trans-tab1').previousElementSibling, 'trans-tab1');
+  showAlert('テキストを反映しました', 'success');
+}
+
+async function summarizeAndSave(interviewId, intervieweeId) {
+  const transcript = document.getElementById('transcriptDisplay').value || fullTranscript;
+  if (!transcript.trim()) {
+    showAlert('文字起こし内容がありません', 'warning');
+    return;
+  }
+
+  const btn = document.getElementById('btnSummarize');
+  btn.disabled = true;
+  btn.textContent = '🤖 AI要約中...';
+
+  try {
+    const result = await callApi('save_transcription', {
+      interview_id: interviewId,
+      transcription: transcript,
+      interviewee_name: intervieweeId,
+    });
+
+    document.getElementById('aiResultArea').style.display = 'block';
+    document.getElementById('aiSummaryText').textContent = result.summary || '（要約なし）';
+
+    if (result.doc_url) {
+      const link = document.getElementById('docLink');
+      link.href = result.doc_url;
+      link.style.display = 'inline-block';
+    }
+
+    if (!result.ai_success) {
+      document.getElementById('aiResultArea').insertAdjacentHTML('afterbegin',
+        '<div class="alert alert-warning" style="margin-bottom:8px">AIサービスに接続できませんでした。文字起こし全文は保存されています。</div>');
+    }
+
+    btn.textContent = '✅ 完了';
+    showAlert('議事録を作成しました', 'success');
+  } catch (e) {
+    showAlert('エラー: ' + e.message, 'danger');
+    btn.disabled = false;
+    btn.textContent = '🤖 AIで要約・議事録作成';
+  }
+}
+
+function closeTranscriptionModal() {
+  stopRecording();
+  closeModal('transcriptionModal');
+  renderInterviews(document.getElementById('contentArea'));
+}
+
+async function showMinutes(interviewId) {
+  try {
+    const minutes = await callApi('get_interview_minutes', { interview_id: interviewId });
+    if (!minutes) {
+      showAlert('議事録がまだ作成されていません', 'warning');
+      return;
+    }
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.id = 'minutesModal';
+    modal.innerHTML = `
+      <div class="modal" style="max-width:720px">
+        <div class="modal-title">📄 面談議事録</div>
+        <div class="tabs">
+          <div class="tab active" onclick="switchTab(this,'min-tab1')">AI要約</div>
+          <div class="tab" onclick="switchTab(this,'min-tab2')">文字起こし全文</div>
+        </div>
+        <div id="min-tab1" class="tab-content active">
+          <div class="ai-summary-box">
+            <div class="ai-summary-label">🤖 むすぼなAI 自動要約</div>
+            <div style="white-space:pre-wrap;font-size:13px;line-height:1.7">${minutes.ai_summary || '（要約なし）'}</div>
+          </div>
+          ${minutes.doc_url ? `<a href="${minutes.doc_url}" target="_blank" class="btn btn-success" style="margin-top:12px;display:inline-block">📄 Googleドキュメントで開く</a>` : ''}
+        </div>
+        <div id="min-tab2" class="tab-content">
+          <div style="background:#fafafa;padding:16px;border-radius:6px;white-space:pre-wrap;font-size:13px;line-height:1.7;max-height:400px;overflow-y:auto">
+            ${minutes.transcription || '（文字起こしなし）'}
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-outline" onclick="closeModal('minutesModal')">閉じる</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  } catch (e) {
+    showAlert(e.message, 'danger');
+  }
+}
+
+function _interviewStatusLabel(status) {
+  const map = { scheduled: '予定', completed: '完了', cancelled: 'キャンセル' };
+  return map[status] || status;
+}
+</script>

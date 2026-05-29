@@ -1,0 +1,263 @@
+<script>
+async function renderStaffing(el) {
+  try {
+    const data = await callApi('get_dashboard', {});
+    const staffing = data.staffing_summary;
+
+    el.innerHTML = `
+      <div class="section-actions">
+        <div></div>
+        <button class="btn btn-primary" onclick="showStaffingForm()">＋ 人員データを更新</button>
+      </div>
+      <div class="card">
+        <div class="card-title">👥 人員充足状況ダッシュボード</div>
+        ${staffing.length === 0 ? '<div class="empty-state">データがありません</div>' : `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>店舗</th><th>シフト</th><th>必要人数</th><th>現員</th><th>不足</th><th>充足率</th><th>状態</th></tr>
+            </thead>
+            <tbody>
+              ${staffing.map(s => `
+                <tr>
+                  <td><strong>${s.store}</strong></td>
+                  <td>${s.shift_type}</td>
+                  <td>${s.required}名</td>
+                  <td>${s.actual}名</td>
+                  <td>${s.shortage > 0 ? `<span style="color:#c62828;font-weight:bold">-${s.shortage}名</span>` : '<span style="color:#2e7d32">0</span>'}</td>
+                  <td>
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <div class="progress-bar" style="width:80px">
+                        <div class="progress-fill ${s.fulfillment_rate >= 80 ? 'progress-good' : 'progress-danger'}"
+                             style="width:${Math.min(100, s.fulfillment_rate)}%"></div>
+                      </div>
+                      <span style="font-size:13px;font-weight:bold;${s.fulfillment_rate < 80 ? 'color:#c62828' : 'color:#2e7d32'}">${s.fulfillment_rate}%</span>
+                    </div>
+                  </td>
+                  <td>
+                    ${s.is_shortage
+                      ? '<span class="badge badge-escalated">⚠ 不足</span>'
+                      : '<span class="badge badge-resolved">✓ 充足</span>'}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>`}
+      </div>
+
+      <div class="card">
+        <div class="card-title">🔄 エリア変更申請</div>
+        <button class="btn btn-outline btn-sm" onclick="navigate('transfers')">エリア変更管理へ</button>
+      </div>
+    `;
+  } catch (e) {
+    el.innerHTML = `<div class="alert alert-danger">${e.message}</div>`;
+  }
+}
+
+function showStaffingForm() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'staffingFormModal';
+  modal.innerHTML = `
+    <div class="modal">
+      <div class="modal-title">👥 人員データの更新</div>
+      <div class="form-group">
+        <label>店舗名 *</label>
+        <input type="text" id="sf_store" placeholder="例: 千葉店">
+      </div>
+      <div class="form-group">
+        <label>シフト種別 *</label>
+        <select id="sf_shift">
+          <option value="夜勤">夜勤</option>
+          <option value="日勤">日勤</option>
+          <option value="早番">早番</option>
+          <option value="遅番">遅番</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>対象日</label>
+        <input type="date" id="sf_date" value="${new Date().toISOString().split('T')[0]}">
+      </div>
+      <div class="form-group">
+        <label>必要人数 *</label>
+        <input type="number" id="sf_required" min="0" placeholder="0">
+      </div>
+      <div class="form-group">
+        <label>現員数 *</label>
+        <input type="number" id="sf_actual" min="0" placeholder="0">
+      </div>
+      <div class="form-group">
+        <label>備考</label>
+        <input type="text" id="sf_notes" placeholder="急な欠員など">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal('staffingFormModal')">キャンセル</button>
+        <button class="btn btn-primary" onclick="submitStaffing()">更新する</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+async function submitStaffing() {
+  const store = document.getElementById('sf_store').value;
+  const required = parseInt(document.getElementById('sf_required').value);
+  const actual = parseInt(document.getElementById('sf_actual').value);
+
+  if (!store || isNaN(required) || isNaN(actual)) {
+    showAlert('店舗名・必要人数・現員数は必須です', 'danger');
+    return;
+  }
+
+  const btn = event.target;
+  btn.disabled = true;
+  try {
+    await callApi('update_staffing', {
+      store,
+      shift_type: document.getElementById('sf_shift').value,
+      date: document.getElementById('sf_date').value,
+      required,
+      actual,
+      notes: document.getElementById('sf_notes').value,
+    });
+    closeModal('staffingFormModal');
+    showAlert('人員データを更新しました', 'success');
+    renderStaffing(document.getElementById('contentArea'));
+  } catch (e) {
+    showAlert(e.message, 'danger');
+    btn.disabled = false;
+  }
+}
+
+async function renderTransfers(el) {
+  try {
+    const transfers = await callApi('get_area_transfers', {});
+    el.innerHTML = `
+      <div class="section-actions">
+        <div></div>
+        <button class="btn btn-primary" onclick="showTransferForm()">＋ エリア変更を申請</button>
+      </div>
+      <div class="card">
+        <div class="card-title">🔄 エリア変更申請一覧</div>
+        ${transfers.length === 0 ? '<div class="empty-state">申請はありません</div>' : `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>申請ID</th><th>スタッフ</th><th>変更前</th><th>変更後</th><th>理由</th><th>実施予定日</th><th>ステータス</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+              ${transfers.map(t => `
+                <tr>
+                  <td><small>${t.transfer_id}</small></td>
+                  <td>${t.staff_id}</td>
+                  <td>${t.from_area}</td>
+                  <td><strong>${t.to_area}</strong></td>
+                  <td style="max-width:150px;font-size:12px">${t.reason}</td>
+                  <td>${t.effective_date ? new Date(t.effective_date).toLocaleDateString('ja-JP') : '-'}</td>
+                  <td>${_transferBadge(t.status)}</td>
+                  <td>
+                    ${t.status === 'pending' && ['admin','area_manager'].includes(CURRENT_USER.role)
+                      ? `<button class="btn btn-sm btn-success" onclick="approveTransfer('${t.transfer_id}')">承認</button>`
+                      : ''}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>`}
+      </div>
+    `;
+  } catch (e) {
+    el.innerHTML = `<div class="alert alert-danger">${e.message}</div>`;
+  }
+}
+
+function showTransferForm() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'transferFormModal';
+  modal.innerHTML = `
+    <div class="modal">
+      <div class="modal-title">🔄 エリア変更申請</div>
+      <div class="form-group">
+        <label>スタッフID *</label>
+        <input type="text" id="tr_staff" placeholder="スタッフID">
+      </div>
+      <div class="form-group">
+        <label>現在のエリア *</label>
+        <input type="text" id="tr_from" placeholder="現在のエリア">
+      </div>
+      <div class="form-group">
+        <label>変更先エリア *</label>
+        <input type="text" id="tr_to" placeholder="変更先エリア">
+      </div>
+      <div class="form-group">
+        <label>変更理由 *</label>
+        <textarea id="tr_reason" style="min-height:80px" placeholder="変更の理由を記載してください"></textarea>
+      </div>
+      <div class="form-group">
+        <label>実施予定日</label>
+        <input type="date" id="tr_date">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal('transferFormModal')">キャンセル</button>
+        <button class="btn btn-primary" onclick="submitTransfer()">申請する</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+async function submitTransfer() {
+  const staffId = document.getElementById('tr_staff').value;
+  const fromArea = document.getElementById('tr_from').value;
+  const toArea = document.getElementById('tr_to').value;
+  const reason = document.getElementById('tr_reason').value;
+
+  if (!staffId || !fromArea || !toArea || !reason) {
+    showAlert('必須項目を入力してください', 'danger');
+    return;
+  }
+  const btn = event.target;
+  btn.disabled = true;
+  try {
+    await callApi('request_area_transfer', {
+      staff_id: staffId,
+      from_area: fromArea,
+      to_area: toArea,
+      reason,
+      effective_date: document.getElementById('tr_date').value,
+    });
+    closeModal('transferFormModal');
+    showAlert('エリア変更申請を提出しました', 'success');
+    renderTransfers(document.getElementById('contentArea'));
+  } catch (e) {
+    showAlert(e.message, 'danger');
+    btn.disabled = false;
+  }
+}
+
+async function approveTransfer(transferId) {
+  if (!confirm('このエリア変更申請を承認しますか？')) return;
+  try {
+    await callApi('approve_area_transfer', { transfer_id: transferId });
+    showAlert('承認しました', 'success');
+    renderTransfers(document.getElementById('contentArea'));
+  } catch (e) {
+    showAlert(e.message, 'danger');
+  }
+}
+
+function _transferBadge(status) {
+  const map = {
+    pending: ['badge-pending', '申請中'],
+    approved: ['badge-approved', '承認済み'],
+    rejected: ['badge-escalated', '却下'],
+    completed: ['badge-resolved', '実施済み'],
+  };
+  const [cls, label] = map[status] || ['', status];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+</script>
