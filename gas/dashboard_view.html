@@ -1,0 +1,124 @@
+<script>
+async function renderDashboard(el) {
+  try {
+    const data = await callApi('get_dashboard', {});
+    const inc = data.incident_summary;
+    const kpi = data.kpi;
+    const tasks = data.pending_tasks;
+
+    el.innerHTML = `
+      <div class="grid grid-4" style="margin-bottom:20px">
+        <div class="stat-card ${inc.open > 0 ? 'danger' : 'success'}">
+          <div class="stat-value">${inc.open}</div>
+          <div class="stat-label">未対応インシデント</div>
+        </div>
+        <div class="stat-card ${tasks.overdue > 0 ? 'danger' : ''}">
+          <div class="stat-value">${tasks.overdue}</div>
+          <div class="stat-label">期限超過タスク</div>
+        </div>
+        <div class="stat-card ${kpi.followup_rate < 100 ? 'warning' : 'success'}">
+          <div class="stat-value">${kpi.followup_rate}%</div>
+          <div class="stat-label">フォローアップ実施率</div>
+        </div>
+        <div class="stat-card ${kpi.avg_lead_time_days && kpi.avg_lead_time_days > 3 ? 'warning' : 'success'}">
+          <div class="stat-value">${kpi.avg_lead_time_days !== null ? kpi.avg_lead_time_days + '日' : '-'}</div>
+          <div class="stat-label">平均対応リードタイム</div>
+        </div>
+      </div>
+
+      <div class="grid grid-2">
+        <div class="card">
+          <div class="card-title">📊 インシデント状況</div>
+          <table>
+            <tr><td>総件数</td><td><strong>${inc.total}</strong></td></tr>
+            <tr><td>未対応</td><td><span class="badge badge-open">${inc.open}</span></td></tr>
+            <tr><td>承認待ち</td><td><span class="badge badge-pending">${inc.pending}</span></td></tr>
+            <tr><td>解決済</td><td><span class="badge badge-resolved">${inc.resolved}</span></td></tr>
+            <tr><td>エスカレーション</td><td><span class="badge badge-escalated">${inc.escalated}</span></td></tr>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="card-title">📋 KPI達成状況</div>
+          <div style="margin-bottom:12px">
+            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
+              <span>フォローアップ実施率</span>
+              <strong>${kpi.followup_rate}% / 目標100%</strong>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill ${kpi.followup_rate >= 100 ? 'progress-good' : kpi.followup_rate >= 80 ? 'progress-warning' : 'progress-danger'}"
+                   style="width:${Math.min(100, kpi.followup_rate)}%"></div>
+            </div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
+              <span>改善課題 オープン</span>
+              <strong>${tasks.open}件 (期限超過 ${tasks.overdue}件)</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      ${_renderStaffingDashboard(data.staffing_summary)}
+
+      ${data.upcoming_interviews.length > 0 ? `
+      <div class="card">
+        <div class="card-title">🗓 直近の予定面談</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>面談ID</th><th>種別</th><th>対象者</th><th>予定日時</th><th>場所</th></tr></thead>
+            <tbody>
+              ${data.upcoming_interviews.map(iv => `
+                <tr>
+                  <td>${iv.interview_id}</td>
+                  <td>${_interviewTypeName(iv.interview_type)}</td>
+                  <td>${iv.interviewee_id}</td>
+                  <td>${iv.scheduled_at ? new Date(iv.scheduled_at).toLocaleString('ja-JP') : '未定'}</td>
+                  <td>${iv.location || ''}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>` : ''}
+    `;
+  } catch (e) {
+    el.innerHTML = `<div class="alert alert-danger">データの読み込みに失敗しました: ${e.message}</div>`;
+  }
+}
+
+function _renderStaffingDashboard(staffing) {
+  if (!staffing || staffing.length === 0) {
+    return '<div class="card"><div class="card-title">👥 人員充足状況</div><div class="empty-state">データがありません</div></div>';
+  }
+  const rows = staffing.map(s => `
+    <tr>
+      <td>${s.store}</td>
+      <td>${s.shift_type}</td>
+      <td>${s.required}</td>
+      <td>${s.actual}</td>
+      <td>${s.shortage > 0 ? `<span style="color:#c62828">-${s.shortage}</span>` : '0'}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="progress-bar" style="width:100px">
+            <div class="progress-fill ${s.fulfillment_rate >= 80 ? 'progress-good' : 'progress-danger'}"
+                 style="width:${Math.min(100, s.fulfillment_rate)}%"></div>
+          </div>
+          <span style="font-size:12px;${s.fulfillment_rate < 80 ? 'color:#c62828;font-weight:bold' : ''}">${s.fulfillment_rate}%</span>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+
+  return `
+    <div class="card">
+      <div class="card-title">👥 人員充足状況（店舗別）</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>店舗</th><th>シフト</th><th>必要人数</th><th>現員</th><th>過不足</th><th>充足率</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+</script>

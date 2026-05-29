@@ -1,0 +1,80 @@
+<script>
+// ============================================================
+// 共通ユーティリティ
+// ============================================================
+
+// GASサーバー側の_dispatch関数を呼び出すブリッジ
+function callApi(action, params) {
+  return new Promise((resolve, reject) => {
+    google.script.run
+      .withSuccessHandler(result => {
+        if (result && result.success === false) {
+          reject(new Error(result.error || 'エラーが発生しました'));
+        } else {
+          resolve(result && result.data !== undefined ? result.data : result);
+        }
+      })
+      .withFailureHandler(err => {
+        reject(new Error(err.message || 'サーバーエラーが発生しました'));
+      })
+      ._dispatch(action, params || {});
+  });
+}
+
+function showAlert(message, type) {
+  const existing = document.getElementById('globalAlert');
+  if (existing) existing.remove();
+
+  const alert = document.createElement('div');
+  alert.id = 'globalAlert';
+  alert.className = `alert alert-${type}`;
+  alert.style.cssText = 'position:fixed;top:70px;right:20px;z-index:9999;max-width:400px;box-shadow:0 4px 12px rgba(0,0,0,0.2)';
+  alert.textContent = message;
+  document.body.appendChild(alert);
+  setTimeout(() => alert.remove(), 4000);
+}
+
+function closeModal(id) {
+  const modal = document.getElementById(id);
+  if (modal) modal.remove();
+}
+
+function switchTab(tabEl, targetId) {
+  const container = tabEl.closest('.modal, .content-area, #app');
+  if (!container) return;
+
+  container.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  container.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+  tabEl.classList.add('active');
+  const target = container.querySelector('#' + targetId) || document.getElementById(targetId);
+  if (target) target.classList.add('active');
+}
+
+function _interviewTypeName(type) {
+  const map = {
+    caregiver: '訪問介護員面談',
+    victim_followup: '被害者フォローアップ',
+    offender_guidance: '加害者指導面談',
+    regular: '定期面談',
+  };
+  return map[type] || type;
+}
+
+// モーダル外クリックで閉じる
+document.addEventListener('click', function(e) {
+  if (e.target.classList.contains('modal-overlay')) {
+    e.target.remove();
+  }
+});
+
+// キーボードショートカット: Escでモーダルを閉じる
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    const modals = document.querySelectorAll('.modal-overlay');
+    if (modals.length > 0) {
+      modals[modals.length - 1].remove();
+    }
+  }
+});
+</script>

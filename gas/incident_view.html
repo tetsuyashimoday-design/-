@@ -1,0 +1,291 @@
+<script>
+async function renderIncidents(el) {
+  try {
+    const incidents = await callApi('get_incidents', {});
+    const canCreate = ['admin','hr','area_manager','area_staff'].includes(CURRENT_USER.role);
+
+    el.innerHTML = `
+      <div class="section-actions">
+        <div></div>
+        ${canCreate ? `<button class="btn btn-primary" onclick="showIncidentForm()">＋ 新規インシデント登録</button>` : ''}
+      </div>
+      <div class="card">
+        <div class="card-title">🚨 インシデント一覧</div>
+        ${incidents.length === 0 ? '<div class="empty-state">インシデントはありません</div>' : `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>報告日</th><th>種別</th><th>エリア</th>
+                <th>重要度</th><th>ステータス</th><th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${incidents.map(inc => `
+                <tr>
+                  <td><small>${inc.incident_id}</small></td>
+                  <td>${inc.reported_at ? new Date(inc.reported_at).toLocaleDateString('ja-JP') : ''}</td>
+                  <td>${inc.incident_type || ''}</td>
+                  <td>${inc.area || ''}</td>
+                  <td>${_severityBadge(inc.severity)}</td>
+                  <td>${_statusBadge(inc.status)}</td>
+                  <td>
+                    <button class="btn btn-sm btn-outline" onclick="showIncidentDetail('${inc.incident_id}')">詳細</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>`}
+      </div>
+    `;
+  } catch (e) {
+    el.innerHTML = `<div class="alert alert-danger">${e.message}</div>`;
+  }
+}
+
+function showIncidentForm() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'incidentFormModal';
+  modal.innerHTML = `
+    <div class="modal">
+      <div class="modal-title">🚨 新規インシデント登録</div>
+      <div class="alert alert-warning">機密情報です。正確に記録してください。</div>
+      <div class="form-group">
+        <label>インシデント種別 *</label>
+        <select id="inc_type">
+          <option value="">選択してください</option>
+          <option value="harassment">ハラスメント</option>
+          <option value="verbal_abuse">暴言・威圧的発言</option>
+          <option value="inappropriate_conduct">不適切行為</option>
+          <option value="rule_violation">規則違反</option>
+          <option value="other">その他</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>発生日 *</label>
+        <input type="date" id="inc_date" value="${new Date().toISOString().split('T')[0]}">
+      </div>
+      <div class="form-group">
+        <label>発生場所</label>
+        <input type="text" id="inc_location" placeholder="例: 千葉店 2F">
+      </div>
+      <div class="form-group">
+        <label>エリア *</label>
+        <input type="text" id="inc_area" value="${CURRENT_USER.area || ''}">
+      </div>
+      <div class="form-group">
+        <label>加害者スタッフID</label>
+        <input type="text" id="inc_offender" placeholder="スタッフID">
+      </div>
+      <div class="form-group">
+        <label>被害者スタッフID</label>
+        <input type="text" id="inc_victim" placeholder="スタッフID">
+      </div>
+      <div class="form-group">
+        <label>重要度</label>
+        <select id="inc_severity">
+          <option value="low">低</option>
+          <option value="medium" selected>中</option>
+          <option value="high">高</option>
+          <option value="critical">緊急</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>詳細説明 *</label>
+        <textarea id="inc_description" placeholder="発生した問題の詳細を記録してください"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal('incidentFormModal')">キャンセル</button>
+        <button class="btn btn-primary" onclick="submitIncident()">登録する</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+async function submitIncident() {
+  const type = document.getElementById('inc_type').value;
+  const description = document.getElementById('inc_description').value;
+  const area = document.getElementById('inc_area').value;
+
+  if (!type || !description || !area) {
+    showAlert('種別・エリア・詳細説明は必須です', 'danger');
+    return;
+  }
+
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = '登録中...';
+
+  try {
+    await callApi('create_incident', {
+      incident_type: type,
+      incident_date: document.getElementById('inc_date').value,
+      location: document.getElementById('inc_location').value,
+      area: area,
+      offender_id: document.getElementById('inc_offender').value,
+      victim_id: document.getElementById('inc_victim').value,
+      severity: document.getElementById('inc_severity').value,
+      description: description,
+    });
+    closeModal('incidentFormModal');
+    showAlert('インシデントを登録しました。エリア長に通知されました。', 'success');
+    renderIncidents(document.getElementById('contentArea'));
+  } catch (e) {
+    showAlert('登録に失敗しました: ' + e.message, 'danger');
+    btn.disabled = false;
+    btn.textContent = '登録する';
+  }
+}
+
+async function showIncidentDetail(incidentId) {
+  try {
+    const [incident, evidence] = await Promise.all([
+      callApi('get_incident', { incident_id: incidentId }),
+      callApi('get_evidence', { incident_id: incidentId }),
+    ]);
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.id = 'incidentDetailModal';
+    modal.innerHTML = `
+      <div class="modal" style="max-width:720px">
+        <div class="modal-title">🚨 インシデント詳細 - ${incidentId}</div>
+        <div class="tabs">
+          <div class="tab active" onclick="switchTab(this,'tab-basic')">基本情報</div>
+          <div class="tab" onclick="switchTab(this,'tab-evidence')">証拠ファイル (${evidence.length})</div>
+          <div class="tab" onclick="switchTab(this,'tab-action')">対応アクション</div>
+        </div>
+        <div id="tab-basic" class="tab-content active">
+          <table>
+            <tr><th style="width:120px">インシデントID</th><td>${incident.incident_id}</td></tr>
+            <tr><th>ステータス</th><td>${_statusBadge(incident.status)}</td></tr>
+            <tr><th>種別</th><td>${incident.incident_type}</td></tr>
+            <tr><th>発生日</th><td>${incident.incident_date ? new Date(incident.incident_date).toLocaleDateString('ja-JP') : ''}</td></tr>
+            <tr><th>エリア</th><td>${incident.area}</td></tr>
+            <tr><th>場所</th><td>${incident.location}</td></tr>
+            <tr><th>重要度</th><td>${_severityBadge(incident.severity)}</td></tr>
+            <tr><th>詳細</th><td style="white-space:pre-wrap">${incident.description}</td></tr>
+          </table>
+        </div>
+        <div id="tab-evidence" class="tab-content">
+          ${evidence.length === 0 ? '<div class="empty-state">証拠ファイルはありません</div>' : `
+          <table>
+            <thead><tr><th>ファイル名</th><th>種別</th><th>アップロード日</th><th>操作</th></tr></thead>
+            <tbody>
+              ${evidence.map(ev => `
+                <tr>
+                  <td>${ev.file_name}</td>
+                  <td>${ev.file_type}</td>
+                  <td>${ev.uploaded_at ? new Date(ev.uploaded_at).toLocaleDateString('ja-JP') : ''}</td>
+                  <td>${ev.drive_url ? `<a href="${ev.drive_url}" target="_blank" class="btn btn-sm btn-outline">開く</a>` : '（制限）'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>`}
+          <div style="margin-top:12px">
+            <input type="file" id="evidenceFile" accept="audio/*,video/*,.pdf,.doc,.docx">
+            <button class="btn btn-sm btn-primary" style="margin-top:8px" onclick="uploadEvidenceFile('${incidentId}')">ファイルをアップロード</button>
+          </div>
+        </div>
+        <div id="tab-action" class="tab-content">
+          ${['admin','area_manager','hr'].includes(CURRENT_USER.role) ? `
+          <div class="form-group">
+            <label>ステータス変更</label>
+            <select id="newStatus">
+              <option value="open">未対応</option>
+              <option value="pending_approval">承認待ち</option>
+              <option value="notice_issued">書面交付済み</option>
+              <option value="improving">改善中</option>
+              <option value="resolved">解決済み</option>
+              <option value="escalated">エスカレーション</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>メモ</label>
+            <textarea id="statusNotes" style="min-height:80px" placeholder="ステータス変更の理由・メモ"></textarea>
+          </div>
+          <button class="btn btn-primary" onclick="updateStatus('${incidentId}')">ステータスを更新</button>
+          <hr style="margin:16px 0">
+          <button class="btn btn-warning" onclick="closeModal('incidentDetailModal');navigate('workflow')">
+            📄 書面通知を作成
+          </button>
+          <button class="btn btn-success" style="margin-left:8px" onclick="closeModal('incidentDetailModal');navigate('interviews')">
+            🎤 面談を予定する
+          </button>` : '<div class="alert alert-info">この情報は閲覧のみ可能です。</div>'}
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-outline" onclick="closeModal('incidentDetailModal')">閉じる</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  } catch (e) {
+    showAlert('読み込みに失敗しました: ' + e.message, 'danger');
+  }
+}
+
+async function updateStatus(incidentId) {
+  const status = document.getElementById('newStatus').value;
+  const notes = document.getElementById('statusNotes').value;
+  try {
+    await callApi('update_incident_status', { incident_id: incidentId, status, notes });
+    closeModal('incidentDetailModal');
+    showAlert('ステータスを更新しました', 'success');
+    renderIncidents(document.getElementById('contentArea'));
+  } catch (e) {
+    showAlert(e.message, 'danger');
+  }
+}
+
+async function uploadEvidenceFile(incidentId) {
+  const fileInput = document.getElementById('evidenceFile');
+  const file = fileInput.files[0];
+  if (!file) { showAlert('ファイルを選択してください', 'warning'); return; }
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const base64 = e.target.result.split(',')[1];
+    try {
+      await callApi('upload_evidence', {
+        incident_id: incidentId,
+        file_name: file.name,
+        file_type: file.type,
+        base64_data: base64,
+        description: '',
+      });
+      showAlert('ファイルをアップロードしました', 'success');
+      showIncidentDetail(incidentId);
+    } catch (err) {
+      showAlert('アップロード失敗: ' + err.message, 'danger');
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function _statusBadge(status) {
+  const map = {
+    open: ['badge-open', '未対応'],
+    pending_approval: ['badge-pending', '承認待ち'],
+    notice_issued: ['badge-issued', '書面交付済み'],
+    improving: ['badge-pending', '改善中'],
+    resolved: ['badge-resolved', '解決済み'],
+    escalated: ['badge-escalated', 'エスカレーション'],
+  };
+  const [cls, label] = map[status] || ['', status];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function _severityBadge(severity) {
+  const map = {
+    low: ['', '低'],
+    medium: ['badge-open', '中'],
+    high: ['badge-escalated', '高'],
+    critical: ['badge-escalated', '緊急'],
+  };
+  const [cls, label] = map[severity] || ['', severity];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+</script>

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>スタッフ行動管理システム</title>
+<?!= include('styles') ?>
+</head>
+<body>
+<div id="app">
+  <!-- サイドバー -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <span class="logo">🏥</span>
+      <span class="app-name">行動管理システム</span>
+    </div>
+    <ul class="nav-list" id="navList"></ul>
+    <div class="sidebar-user" id="sidebarUser"></div>
+  </nav>
+
+  <!-- メインコンテンツ -->
+  <main class="main-content">
+    <div class="topbar">
+      <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+      <h2 class="page-title" id="pageTitle">ダッシュボード</h2>
+    </div>
+    <div class="content-area" id="contentArea">
+      <div class="loading">読み込み中...</div>
+    </div>
+  </main>
+</div>
+
+<script>
+const CURRENT_USER = <?= user ?>;
+const INITIAL_PAGE = '<?= page ?>';
+
+// ナビゲーション定義
+const NAV_ITEMS = [
+  { id: 'dashboard', label: '📊 ダッシュボード', roles: ['admin','hr','area_manager','area_staff','staff'] },
+  { id: 'incidents', label: '🚨 インシデント管理', roles: ['admin','hr','area_manager','area_staff'] },
+  { id: 'workflow', label: '📄 書面ワークフロー', roles: ['admin','hr','area_manager'] },
+  { id: 'interviews', label: '🎤 面談・議事録', roles: ['admin','hr','area_manager','area_staff'] },
+  { id: 'staffing', label: '👥 人員充足管理', roles: ['admin','hr','area_manager','area_staff'] },
+  { id: 'transfers', label: '🔄 エリア変更', roles: ['admin','hr','area_manager','area_staff'] },
+  { id: 'my_tasks', label: '✅ 改善課題', roles: ['admin','hr','area_manager','area_staff','staff'] },
+];
+
+function init() {
+  renderNav();
+  renderUserInfo();
+  navigate(INITIAL_PAGE || 'dashboard');
+}
+
+function renderNav() {
+  const list = document.getElementById('navList');
+  list.innerHTML = NAV_ITEMS
+    .filter(item => item.roles.includes(CURRENT_USER.role))
+    .map(item => `
+      <li>
+        <a class="nav-link" onclick="navigate('${item.id}')" data-page="${item.id}">
+          ${item.label}
+        </a>
+      </li>
+    `).join('');
+}
+
+function renderUserInfo() {
+  const el = document.getElementById('sidebarUser');
+  const roleNames = {
+    admin: '経営層', area_manager: 'エリア長',
+    area_staff: 'エリア担当', hr: 'HR担当', staff: 'スタッフ'
+  };
+  el.innerHTML = `
+    <div class="user-info">
+      <div class="user-name">${CURRENT_USER.name || CURRENT_USER.email}</div>
+      <div class="user-role">${roleNames[CURRENT_USER.role] || CURRENT_USER.role}</div>
+    </div>
+  `;
+}
+
+function navigate(page) {
+  document.querySelectorAll('.nav-link').forEach(el => {
+    el.classList.toggle('active', el.dataset.page === page);
+  });
+  const titles = {
+    dashboard: 'ダッシュボード',
+    incidents: 'インシデント管理',
+    workflow: '書面ワークフロー',
+    interviews: '面談・議事録',
+    staffing: '人員充足管理',
+    transfers: 'エリア変更申請',
+    my_tasks: '改善課題',
+  };
+  document.getElementById('pageTitle').textContent = titles[page] || page;
+  renderPage(page);
+}
+
+function renderPage(page) {
+  const el = document.getElementById('contentArea');
+  el.innerHTML = '<div class="loading">読み込み中...</div>';
+
+  const renderers = {
+    dashboard: renderDashboard,
+    incidents: renderIncidents,
+    workflow: renderWorkflow,
+    interviews: renderInterviews,
+    staffing: renderStaffing,
+    transfers: renderTransfers,
+    my_tasks: renderMyTasks,
+  };
+
+  if (renderers[page]) renderers[page](el);
+}
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+}
+
+// API呼び出しユーティリティ
+function api(action, params) {
+  return new Promise((resolve, reject) => {
+    google.script.run
+      .withSuccessHandler(r => {
+        if (r && r.success === false) reject(new Error(r.error));
+        else resolve(r && r.data !== undefined ? r.data : r);
+      })
+      .withFailureHandler(e => reject(e))
+      ._dispatch(action, params || {});
+  });
+}
+
+// GAS側への直接呼び出し用ブリッジ
+</script>
+
+<?!= include('dashboard_view') ?>
+<?!= include('incident_view') ?>
+<?!= include('workflow_view') ?>
+<?!= include('interview_view') ?>
+<?!= include('staffing_view') ?>
+<?!= include('common_scripts') ?>
+
+<script>
+window.onload = init;
+</script>
+</body>
+</html>

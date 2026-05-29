@@ -1,0 +1,251 @@
+<script>
+async function renderWorkflow(el) {
+  try {
+    const [notices, tasks] = await Promise.all([
+      callApi('get_notices', {}),
+      callApi('get_improvement_tasks', {}),
+    ]);
+
+    el.innerHTML = `
+      <div class="tabs" id="workflowTabs">
+        <div class="tab active" onclick="switchTab(this,'wf-notices')">📄 書面通知 (${notices.length})</div>
+        <div class="tab" onclick="switchTab(this,'wf-tasks')">✅ 改善タスク (${tasks.length})</div>
+      </div>
+
+      <!-- 書面通知 -->
+      <div id="wf-notices" class="tab-content active">
+        <div class="section-actions" style="margin-bottom:12px">
+          <div></div>
+          <button class="btn btn-primary" onclick="showNoticeForm()">＋ 書面通知を作成</button>
+        </div>
+        <div class="card">
+          <div class="card-title">📄 書面通知一覧</div>
+          ${notices.length === 0 ? '<div class="empty-state">書面通知はありません</div>' : `
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>通知ID</th><th>インシデント</th><th>対象スタッフ</th><th>種別</th><th>ステータス</th><th>改善期限</th><th>操作</th></tr>
+              </thead>
+              <tbody>
+                ${notices.map(n => `
+                  <tr>
+                    <td><small>${n.notice_id}</small></td>
+                    <td><small>${n.incident_id}</small></td>
+                    <td>${n.staff_id}</td>
+                    <td>${n.notice_type}</td>
+                    <td>${_noticeBadge(n.status)}</td>
+                    <td>${n.improvement_deadline ? new Date(n.improvement_deadline).toLocaleDateString('ja-JP') : '-'}</td>
+                    <td>
+                      ${n.status === 'draft' && ['admin','area_manager'].includes(CURRENT_USER.role) ? `
+                        <button class="btn btn-sm btn-success" onclick="approveNoticeAction('${n.notice_id}')">承認</button>
+                      ` : ''}
+                      ${n.status === 'approved' && ['admin','area_manager'].includes(CURRENT_USER.role) ? `
+                        <button class="btn btn-sm btn-primary" onclick="issueNoticeAction('${n.notice_id}')">交付</button>
+                      ` : ''}
+                      ${n.doc_url ? `<a href="${n.doc_url}" target="_blank" class="btn btn-sm btn-outline">📄</a>` : ''}
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>`}
+        </div>
+      </div>
+
+      <!-- 改善タスク -->
+      <div id="wf-tasks" class="tab-content">
+        <div class="card">
+          <div class="card-title">✅ 改善タスク一覧</div>
+          ${tasks.length === 0 ? '<div class="empty-state">改善タスクはありません</div>' : `
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>タスクID</th><th>タイトル</th><th>対象スタッフ</th><th>期限</th><th>ステータス</th><th>操作</th></tr>
+              </thead>
+              <tbody>
+                ${tasks.map(t => {
+                  const isOverdue = t.deadline && new Date(t.deadline) < new Date() && t.status === 'open';
+                  return `
+                  <tr ${isOverdue ? 'style="background:#fff5f5"' : ''}>
+                    <td><small>${t.task_id}</small></td>
+                    <td>${t.title}${isOverdue ? ' <span style="color:#c62828;font-size:11px">⚠期限超過</span>' : ''}</td>
+                    <td>${t.staff_id}</td>
+                    <td>${t.deadline ? new Date(t.deadline).toLocaleDateString('ja-JP') : '-'}</td>
+                    <td>${_taskBadge(t.status)}</td>
+                    <td>
+                      ${t.status === 'open' ? `
+                        <button class="btn btn-sm btn-success" onclick="completeTask('${t.task_id}')">完了</button>
+                      ` : ''}
+                    </td>
+                  </tr>`}).join('')}
+              </tbody>
+            </table>
+          </div>`}
+        </div>
+      </div>
+    `;
+  } catch (e) {
+    el.innerHTML = `<div class="alert alert-danger">${e.message}</div>`;
+  }
+}
+
+async function renderMyTasks(el) {
+  try {
+    const tasks = await callApi('get_improvement_tasks', {});
+    el.innerHTML = `
+      <div class="card">
+        <div class="card-title">✅ 自分の改善課題</div>
+        ${tasks.length === 0 ? '<div class="empty-state">改善課題はありません</div>' : `
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>タイトル</th><th>内容</th><th>期限</th><th>ステータス</th><th>操作</th></tr></thead>
+            <tbody>
+              ${tasks.map(t => {
+                const isOverdue = t.deadline && new Date(t.deadline) < new Date() && t.status === 'open';
+                return `
+                <tr ${isOverdue ? 'style="background:#fff5f5"' : ''}>
+                  <td>${t.title}${isOverdue ? ' <span style="color:#c62828">⚠期限超過</span>' : ''}</td>
+                  <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.description}</td>
+                  <td>${t.deadline ? new Date(t.deadline).toLocaleDateString('ja-JP') : '-'}</td>
+                  <td>${_taskBadge(t.status)}</td>
+                  <td>${t.status === 'open' ? `<button class="btn btn-sm btn-success" onclick="completeTask('${t.task_id}')">完了報告</button>` : ''}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>`}
+      </div>
+    `;
+  } catch (e) {
+    el.innerHTML = `<div class="alert alert-danger">${e.message}</div>`;
+  }
+}
+
+function showNoticeForm() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'noticeFormModal';
+  modal.innerHTML = `
+    <div class="modal">
+      <div class="modal-title">📄 書面通知の作成</div>
+      <div class="alert alert-warning">作成後、エリア長の承認が必要です。</div>
+      <div class="form-group">
+        <label>インシデントID *</label>
+        <input type="text" id="ntc_incident" placeholder="INC-xxxxx">
+      </div>
+      <div class="form-group">
+        <label>対象スタッフID *</label>
+        <input type="text" id="ntc_staff" placeholder="スタッフID">
+      </div>
+      <div class="form-group">
+        <label>通知種別 *</label>
+        <select id="ntc_type">
+          <option value="warning">口頭注意</option>
+          <option value="written_warning">書面警告</option>
+          <option value="improvement_notice">改善指示</option>
+          <option value="final_warning">最終警告</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>通知内容 *</label>
+        <textarea id="ntc_content" placeholder="就業規則違反の事実・改善事項を記載してください"></textarea>
+      </div>
+      <div class="form-group">
+        <label>改善期限</label>
+        <input type="date" id="ntc_deadline">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal('noticeFormModal')">キャンセル</button>
+        <button class="btn btn-primary" onclick="submitNotice()">作成する</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+async function submitNotice() {
+  const incidentId = document.getElementById('ntc_incident').value;
+  const staffId = document.getElementById('ntc_staff').value;
+  const content = document.getElementById('ntc_content').value;
+  if (!incidentId || !staffId || !content) {
+    showAlert('必須項目を入力してください', 'danger');
+    return;
+  }
+  const btn = event.target;
+  btn.disabled = true;
+  try {
+    await callApi('create_notice', {
+      incident_id: incidentId,
+      staff_id: staffId,
+      notice_type: document.getElementById('ntc_type').value,
+      content: content,
+      improvement_deadline: document.getElementById('ntc_deadline').value,
+    });
+    closeModal('noticeFormModal');
+    showAlert('書面通知を作成しました。承認待ちです。', 'success');
+    renderWorkflow(document.getElementById('contentArea'));
+  } catch (e) {
+    showAlert(e.message, 'danger');
+    btn.disabled = false;
+  }
+}
+
+async function approveNoticeAction(noticeId) {
+  if (!confirm('この書面通知を承認しますか？\nGoogle ドキュメントが自動生成されます。')) return;
+  try {
+    const result = await callApi('approve_notice', { notice_id: noticeId });
+    showAlert('承認しました', 'success');
+    if (result.doc_url) {
+      if (confirm('議事録Googleドキュメントが生成されました。開きますか？')) {
+        window.open(result.doc_url, '_blank');
+      }
+    }
+    renderWorkflow(document.getElementById('contentArea'));
+  } catch (e) {
+    showAlert(e.message, 'danger');
+  }
+}
+
+async function issueNoticeAction(noticeId) {
+  if (!confirm('この書面を交付済みにします。よろしいですか？')) return;
+  try {
+    await callApi('issue_notice', { notice_id: noticeId });
+    showAlert('書面を交付済みにしました', 'success');
+    renderWorkflow(document.getElementById('contentArea'));
+  } catch (e) {
+    showAlert(e.message, 'danger');
+  }
+}
+
+async function completeTask(taskId) {
+  const notes = prompt('完了報告のメモを入力してください（省略可）');
+  if (notes === null) return;
+  try {
+    await callApi('update_task_status', { task_id: taskId, status: 'completed', notes });
+    showAlert('タスクを完了しました', 'success');
+    navigate('workflow');
+  } catch (e) {
+    showAlert(e.message, 'danger');
+  }
+}
+
+function _noticeBadge(status) {
+  const map = {
+    draft: ['badge-draft', '下書き'],
+    approved: ['badge-approved', '承認済み'],
+    issued: ['badge-issued', '交付済み'],
+  };
+  const [cls, label] = map[status] || ['', status];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function _taskBadge(status) {
+  const map = {
+    open: ['badge-open', '未完了'],
+    completed: ['badge-resolved', '完了'],
+    cancelled: ['badge-draft', 'キャンセル'],
+  };
+  const [cls, label] = map[status] || ['', status];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+</script>
