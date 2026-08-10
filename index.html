@@ -1,108 +1,575 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ジブリ風写真変換</title>
-    <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>サービス利用依頼書 入力・AI分析アプリ</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+  background: #f0f7f4; color: #1a1a1a; min-height: 100vh;
+}
+.header {
+  background: linear-gradient(135deg, #00704A 0%, #1E9B6B 100%);
+  color: #fff; padding: 1rem 2rem;
+  display: flex; align-items: center; gap: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+.header h1 { font-size: 20px; font-weight: 600; }
+.header p { font-size: 13px; color: #a7f3d0; margin-top: 2px; }
+.header-logo { flex-shrink: 0; }
+.container { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem; }
+</style>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
-    <div class="container">
-        <header class="header">
-            <div class="header-cloud cloud-left"></div>
-            <div class="header-cloud cloud-right"></div>
-            <h1>ジブリ風写真変換</h1>
-            <p class="subtitle">あなたの写真を魔法のジブリ世界へ</p>
-        </header>
+<!-- モード切り替えバー -->
+<div id="mode-bar" style="background:#fff3cd; padding:8px 2rem; font-size:13px; display:flex; justify-content:space-between; align-items:center;">
+  <span id="mode-label"></span>
+  <div style="display:flex; gap:8px;">
+    <button onclick="showQrModal()" style="background:#00704A; color:#fff; border:none; border-radius:6px; padding:5px 14px; font-size:12px; cursor:pointer;">📱 QRコード発行</button>
+    <button onclick="showAdminLogin()" style="background:none; border:1px solid #ccc; border-radius:6px; padding:4px 12px; font-size:12px; cursor:pointer; color:#666;">🔒 事業所管理画面</button>
+  </div>
+</div>
 
-        <section class="api-section card">
-            <label class="label" for="api-key">
-                <span class="label-icon">🔑</span> Replicate APIキー
-            </label>
-            <div class="api-key-row">
-                <input
-                    type="password"
-                    id="api-key"
-                    class="input"
-                    placeholder="r8_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                    autocomplete="off"
-                >
-                <button class="btn btn-secondary" id="save-key">保存</button>
-            </div>
-            <p class="note">APIキーはブラウザのローカルストレージのみに保存されます</p>
-        </section>
+<!-- ヘッダー -->
+<div class="header" id="header-cm">
+  <div class="header-logo">
+    <svg width="48" height="48" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <path d="M50 5 C62 18, 82 18, 95 50 C82 82, 62 82, 50 95 C38 82, 18 82, 5 50 C18 18, 38 18, 50 5Z" fill="#d4a0c0"/>
+      <text x="50" y="60" text-anchor="middle" fill="#fff" font-size="30" font-weight="bold" font-family="serif">Y</text>
+    </svg>
+  </div>
+  <div>
+    <h1>サービス利用依頼書</h1>
+    <p>在宅介護 やさしい手 ─ 新規ご依頼はこちらからご入力ください</p>
+  </div>
+</div>
+<div class="header" id="header-admin" style="display:none;">
+  <div class="header-logo">
+    <svg width="48" height="48" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <path d="M50 5 C62 18, 82 18, 95 50 C82 82, 62 82, 50 95 C38 82, 18 82, 5 50 C18 18, 38 18, 50 5Z" fill="#d4a0c0"/>
+      <text x="50" y="60" text-anchor="middle" fill="#fff" font-size="30" font-weight="bold" font-family="serif">Y</text>
+    </svg>
+  </div>
+  <div>
+    <h1>サービス利用依頼書 管理システム</h1>
+    <p>在宅介護 やさしい手 ─ 依頼受付・AI訪問介護計画書作成</p>
+  </div>
+</div>
 
-        <section class="upload-section card">
-            <div class="drop-zone" id="drop-zone">
-                <div class="drop-zone-content">
-                    <div class="drop-icon">🖼️</div>
-                    <p class="drop-text">写真をドラッグ＆ドロップ</p>
-                    <p class="drop-or">または</p>
-                    <button class="btn btn-primary" id="upload-btn">ファイルを選択</button>
-                    <p class="drop-hint">JPEG・PNG・WebP 対応</p>
-                </div>
-                <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp" hidden>
-            </div>
-        </section>
-
-        <section class="settings-section card" id="settings-section" hidden>
-            <label class="label" for="strength">
-                変換強度:
-                <span class="strength-badge" id="strength-value">70</span>%
-            </label>
-            <input type="range" id="strength" class="slider" min="30" max="90" value="70">
-            <p class="note">低いほど元の写真に近く、高いほどジブリ風に大きく変換されます</p>
-        </section>
-
-        <section class="images-section" id="images-section" hidden>
-            <div class="image-panel">
-                <h3 class="panel-title">オリジナル</h3>
-                <img id="original-img" class="preview-img" alt="オリジナル画像">
-            </div>
-            <div class="arrow-container">
-                <div class="arrow">✦</div>
-            </div>
-            <div class="image-panel">
-                <h3 class="panel-title">ジブリ風</h3>
-                <div class="result-placeholder" id="result-placeholder">
-                    <span class="placeholder-text">変換後に表示されます</span>
-                </div>
-                <img id="result-img" class="preview-img" alt="ジブリ風画像" hidden>
-            </div>
-        </section>
-
-        <div class="action-row" id="convert-section" hidden>
-            <button class="btn btn-convert" id="convert-btn">
-                <span class="btn-icon">✨</span> ジブリ風に変換
-            </button>
-        </div>
-
-        <div class="loading" id="loading" hidden>
-            <div class="totoro-loader">
-                <div class="loader-dots">
-                    <span></span><span></span><span></span>
-                </div>
-            </div>
-            <p class="loading-text" id="loading-text">魔法をかけています...</p>
-        </div>
-
-        <div class="action-row" id="download-section" hidden>
-            <button class="btn btn-download" id="download-btn">
-                <span class="btn-icon">⬇️</span> 画像をダウンロード
-            </button>
-            <button class="btn btn-secondary" id="reset-btn">別の写真を試す</button>
-        </div>
-
-        <div class="error-box" id="error-box" hidden>
-            <span class="error-icon">⚠️</span>
-            <span id="error-message"></span>
-        </div>
+<!-- QRコードモーダル -->
+<div id="qr-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:9997; justify-content:center; align-items:center;">
+  <div style="background:#fff; border-radius:16px; padding:2rem; max-width:420px; width:90%; box-shadow:0 10px 40px rgba(0,0,0,0.3); text-align:center; max-height:90vh; overflow-y:auto;">
+    <h3 style="font-size:18px; color:#00704A; margin-bottom:0.5rem;">📱 QRコード</h3>
+    <p style="font-size:13px; color:#666; margin-bottom:1rem;">ケアマネジャーにこのQRコードを読み取ってもらい<br>依頼書を入力していただけます</p>
+    <div style="margin-bottom:1rem; text-align:left;">
+      <label style="font-size:12px; font-weight:600; color:#555;">QRコードにするURL</label>
+      <div style="display:flex; gap:6px; margin-top:4px;">
+        <input type="text" id="qr-url-input" placeholder="https://デプロイ先URL" style="flex:1; font-size:14px; padding:8px 12px; border:1px solid #d0dae6; border-radius:8px;">
+        <button class="btn btn-primary" onclick="generateQRModal()" style="padding:8px 14px; font-size:13px;">生成</button>
+      </div>
+      <p style="font-size:11px; color:#888; margin-top:4px;">※Cloudflare Pages等にデプロイ後のURLを入力してください</p>
     </div>
+    <div id="qr-modal-area" style="display:inline-block; padding:1rem; background:#fff; border:2px solid #e0e8f0; border-radius:12px; margin-bottom:1rem; min-height:220px; min-width:220px;"></div>
+    <p style="font-size:11px; color:#888; margin-bottom:1rem; word-break:break-all;" id="qr-modal-url"></p>
+    <div style="display:flex; gap:8px; justify-content:center;">
+      <button class="btn btn-primary" onclick="printQR()">🖨️ 印刷</button>
+      <button class="btn btn-outline" onclick="closeQrModal()">閉じる</button>
+    </div>
+  </div>
+</div>
 
-    <footer class="footer">
-        <p>Powered by Replicate API & Stable Diffusion</p>
-    </footer>
+<!-- 管理者ログインモーダル -->
+<div id="admin-login-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:9998; justify-content:center; align-items:center;">
+  <div style="background:#fff; border-radius:16px; padding:2rem; max-width:360px; width:90%; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+    <h3 style="margin-bottom:1rem; font-size:16px; color:#00704A;">🔒 事業所管理画面ログイン</h3>
+    <p style="font-size:13px; color:#666; margin-bottom:1rem;">管理者パスワードを入力してください</p>
+    <input type="password" id="admin-modal-pw" placeholder="パスワード" style="width:100%; padding:10px 12px; border:1px solid #d0dae6; border-radius:8px; font-size:14px; margin-bottom:8px;" onkeydown="if(event.key==='Enter')adminLogin()">
+    <div id="admin-modal-error" style="font-size:13px; color:#dc2626; margin-bottom:8px; display:none;"></div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn btn-primary" onclick="adminLogin()" style="flex:1;">ログイン</button>
+      <button class="btn btn-outline" onclick="closeAdminLogin()" style="flex:1;">キャンセル</button>
+    </div>
+  </div>
+</div>
 
-    <script src="app.js"></script>
+<div class="container">
+<!-- ケアマネ向けタブ -->
+<div id="cm-tabs" class="tabs">
+  <button class="tab active" onclick="switchTab('input')">📝 依頼書入力</button>
+  <button class="tab" onclick="switchTab('cm-done')">✅ 送信済み</button>
+</div>
+<!-- 事業所管理者向けタブ -->
+<div id="admin-tabs" class="tabs" style="display:none;">
+  <button class="tab active" onclick="switchTab('input')">📝 依頼書入力</button>
+  <button class="tab" onclick="switchTab('ocr')">📷 AI-OCR読取</button>
+  <button class="tab" onclick="switchTab('plan')">🤖 AI計画書作成</button>
+  <button class="tab" onclick="switchTab('list')">📋 依頼一覧</button>
+  <button class="tab" onclick="switchTab('settings')">⚙️ 設定</button>
+</div>
+
+<!-- タブ1: 依頼書入力 -->
+<div class="panel active" id="panel-input">
+<div class="card">
+  <div class="card-title">📄 サービス利用依頼書（介護・総合事業・おまかせ・障害）</div>
+  <div class="section-title">▼ 依頼元事業所情報
+    <button class="btn-small" style="background:#d1fae5; color:#047857; margin-left:12px; padding:4px 12px;" onclick="loadCmProfile()">📥 前回の情報を読込</button>
+    <button class="btn-small" style="background:#dcfce7; color:#15803d; margin-left:4px; padding:4px 12px;" onclick="saveCmProfile()">💾 入力情報を保存</button>
+  </div>
+  <div class="form-grid">
+    <div class="form-group"><label>指定事業所番号</label><input type="text" id="from-jigyosho-no" placeholder="例：1371204023"></div>
+    <div class="form-group"><label>事業所名</label><input type="text" id="from-jigyosho-name" placeholder="例：○○居宅介護支援事業所"></div>
+    <div class="form-group"><label>電話番号</label><input type="tel" id="from-tel" placeholder="例：03-1234-5678"></div>
+    <div class="form-group"><label>FAX番号</label><input type="tel" id="from-fax" placeholder="例：03-1234-5679"></div>
+    <div class="form-group"><label>ご担当者名</label><input type="text" id="from-tanto" placeholder="例：田中 花子"></div>
+    <div class="form-group"><label>依頼日</label><input type="date" id="irai-date"></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-title">▼ サービス事業所（やさしい手）</div>
+  <div class="form-grid">
+    <div class="form-group full"><label>サービス事業所名（選択すると自動入力）</label><select id="to-jigyosho-select" onchange="onJigyoshoSelect()"><option value="">-- 事業所を選択 --</option></select></div>
+    <div class="form-group"><label>指定事業所番号</label><input type="text" id="to-jigyosho-no" readonly style="background:#f0f7f4;"></div>
+    <div class="form-group"><label>サービス事業所名</label><input type="text" id="to-jigyosho-name" readonly style="background:#f0f7f4;"></div>
+    <div class="form-group"><label>電話番号</label><input type="tel" id="to-tel" readonly style="background:#f0f7f4;"></div>
+    <div class="form-group"><label>FAX番号</label><input type="tel" id="to-fax" readonly style="background:#f0f7f4;"></div>
+    <div class="form-group full"><label>住所</label><input type="text" id="to-address" readonly style="background:#f0f7f4;"></div>
+    <div class="form-group full"><label>担当者氏名</label><input type="text" id="to-tanto" placeholder="例：鶴田・松永"></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-title">▼ ご利用者情報</div>
+  <div class="form-grid">
+    <div class="form-group"><label>サービス種別</label><select id="service-type"><option value="介護">介護</option><option value="総合事業">総合事業</option><option value="おまかせ">おまかせ</option><option value="障害">障害</option></select></div>
+    <div class="form-group"><label>受給者資格</label><select id="jukyusha-shikaku"><option value="有">有</option><option value="無">無</option></select></div>
+    <div class="form-group"><label>保険者（市区）</label><input type="text" id="hokensha" placeholder="例：世田谷区"></div>
+    <div class="form-group"><label>被保険者番号</label><input type="text" id="hihokensha-no" placeholder="例：0012345678"></div>
+    <div class="form-group"><label>フリガナ</label><input type="text" id="user-kana" placeholder="例：ヤマダ タロウ"></div>
+    <div class="form-group"><label>氏名</label><input type="text" id="user-name" placeholder="例：山田 太郎"></div>
+    <div class="form-group"><label>性別</label><select id="user-sex"><option value="男">男</option><option value="女">女</option></select></div>
+    <div class="form-group"><label>生年月日</label><input type="date" id="user-birthday"></div>
+    <div class="form-group full"><label>住所</label><input type="text" id="user-address" placeholder="例：〒154-0001 東京都世田谷区..."></div>
+    <div class="form-group"><label>電話番号</label><input type="tel" id="user-tel" placeholder="例：03-1234-5678"></div>
+    <div class="form-group"><label>緊急連絡先（氏名・続柄）</label><input type="text" id="emergency-name" placeholder="例：山田 花子 様（妻）"></div>
+    <div class="form-group"><label>緊急連絡先電話番号</label><input type="tel" id="emergency-tel" placeholder="例：090-1234-5678"></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-title">▼ 認定・保険情報</div>
+  <div class="form-grid">
+    <div class="form-group"><label>認定結果</label><select id="nintei-kekka"><option value="">選択</option><option>要支援1</option><option>要支援2</option><option>要介護1</option><option>要介護2</option><option>要介護3</option><option>要介護4</option><option>要介護5</option><option>申請中</option></select></div>
+    <div class="form-group"><label>認定有効期間（開始）</label><input type="date" id="nintei-start"></div>
+    <div class="form-group"><label>認定有効期間（終了）</label><input type="date" id="nintei-end"></div>
+    <div class="form-group"><label>生活保護</label><select id="seikatsu-hogo"><option value="無">無</option><option value="有">有</option></select></div>
+    <div class="form-group"><label>公費負担</label><select id="kouhi-futan"><option value="無">無</option><option value="有（58）">有（58）</option><option value="有（その他）">有（その他）</option></select></div>
+    <div class="form-group"><label>受給者番号</label><input type="text" id="jukyusha-no" placeholder="受給者番号"></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-title">▼ 心身の状況</div>
+  <div class="form-grid">
+    <div class="form-group full"><label>疾患・後遺症</label><textarea id="shikkan" rows="2" placeholder="例：脳梗塞後遺症、左片麻痺"></textarea></div>
+    <div class="form-group full"><label>既往症</label><textarea id="kiousho" rows="2" placeholder="例：高血圧、糖尿病"></textarea></div>
+    <div class="form-group full"><label>薬の情報</label><textarea id="kusuri" rows="2" placeholder="例：降圧剤（朝1錠）"></textarea></div>
+    <div class="form-group full"><label>リハビリの実施状況</label><textarea id="rehab" rows="2" placeholder="例：週2回通所リハビリ"></textarea></div>
+    <div class="form-group"><label>障害高齢者の日常生活自立度</label><select id="shougai-jiritsu"><option value="">選択</option><option>正常</option><option>J1</option><option>J2</option><option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option><option>C2</option></select></div>
+    <div class="form-group"><label>認知症高齢者の日常生活自立度</label><select id="ninchi-jiritsu"><option value="">選択</option><option>正常</option><option>Ⅰ</option><option>Ⅱa</option><option>Ⅱb</option><option>Ⅲa</option><option>Ⅲb</option><option>Ⅳ</option><option>Ⅴ</option><option>M</option></select></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-title">▼ 希望内容</div>
+  <div class="form-grid">
+    <div class="form-group"><label>希望サービス開始日</label><input type="date" id="kibou-start-date"></div>
+    <div class="form-group"><label>希望サービス内容</label>
+      <div class="checkbox-group">
+        <label class="check-label"><input type="checkbox" id="svc-souji"> 掃除</label>
+        <label class="check-label"><input type="checkbox" id="svc-sentaku"> 洗濯</label>
+        <label class="check-label"><input type="checkbox" id="svc-kaimono"> 買物</label>
+        <label class="check-label"><input type="checkbox" id="svc-chouri"> 調理</label>
+        <label class="check-label"><input type="checkbox" id="svc-kishou"> 起床介助</label>
+        <label class="check-label"><input type="checkbox" id="svc-shushin"> 就寝介助</label>
+        <label class="check-label"><input type="checkbox" id="svc-shokuji"> 食事介助</label>
+        <label class="check-label"><input type="checkbox" id="svc-fukuyaku"> 服薬確認</label>
+        <label class="check-label"><input type="checkbox" id="svc-seishiki"> 清拭</label>
+        <label class="check-label"><input type="checkbox" id="svc-koui"> 更衣介助</label>
+        <label class="check-label"><input type="checkbox" id="svc-seiyou"> 整容</label>
+        <label class="check-label"><input type="checkbox" id="svc-nyuuyoku"> 入浴介助</label>
+        <label class="check-label"><input type="checkbox" id="svc-haisetsu"> 排泄介助</label>
+        <label class="check-label"><input type="checkbox" id="svc-taihenkan"> 体位変換</label>
+        <label class="check-label"><input type="checkbox" id="svc-idou"> 移動介助</label>
+        <label class="check-label"><input type="checkbox" id="svc-ijou"> 移乗介助</label>
+        <label class="check-label"><input type="checkbox" id="svc-gaishutsu"> 外出介助</label>
+      </div>
+    </div>
+  </div>
+  <div class="section-title" style="margin-top:1.5rem;">▼ 曜日・時間帯スケジュール</div>
+  <div id="schedule-rows">
+    <div class="schedule-row">
+      <select class="sch-day"><option value="">曜日</option><option>月</option><option>火</option><option>水</option><option>木</option><option>金</option><option>土</option><option>日</option></select>
+      <input type="time" class="sch-start"><span>～</span><input type="time" class="sch-end">
+      <select class="sch-type"><option value="身体">身体</option><option value="生活">生活</option><option value="総合事業11">総合事業11</option><option value="総合事業12">総合事業12</option></select>
+      <button class="btn-small btn-danger-small" onclick="this.closest('.schedule-row').remove()">✕</button>
+    </div>
+  </div>
+  <button class="btn btn-outline" onclick="addScheduleRow()" style="margin-top:8px;">＋ スケジュール追加</button>
+</div>
+
+<div class="card">
+  <div class="section-title">▼ 備考・介護目標</div>
+  <div class="form-grid">
+    <div class="form-group full"><label>備考欄</label><textarea id="bikou" rows="3" placeholder="特記事項"></textarea></div>
+    <div class="form-group full"><label>介護の目標</label><textarea id="kaigo-mokuhyou" rows="3" placeholder="例：自宅での生活を継続し安全に過ごす"></textarea></div>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-primary" onclick="saveIraisho()">📤 依頼書を送信</button>
+    <button class="btn btn-success" onclick="saveAndCreatePlan()" id="btn-save-plan" style="display:none;">🤖 保存してAI計画書作成</button>
+    <button class="btn btn-outline" onclick="clearForm()">🗑️ クリア</button>
+  </div>
+  <div class="alert alert-success" id="save-success"></div>
+  <div class="alert alert-error" id="save-error"></div>
+</div>
+</div><!-- /panel-input -->
+
+<!-- タブ: 送信済み -->
+<div class="panel" id="panel-cm-done">
+<div class="card">
+  <div class="card-title">✅ 送信済み依頼書</div>
+  <div class="table-wrap"><table><thead><tr><th>送信日時</th><th>利用者名</th><th>サービス種別</th><th>希望開始日</th><th>ステータス</th></tr></thead><tbody id="cm-done-tbody"><tr><td colspan="5" style="text-align:center;color:#aaa;padding:2rem;">送信済みデータがありません</td></tr></tbody></table></div>
+</div>
+</div>
+
+<!-- タブ: AI-OCR -->
+<div class="panel" id="panel-ocr">
+<div class="card">
+  <div class="card-title">📷 FAX依頼書 AI-OCR読み取り</div>
+  <p style="font-size:13px;color:#666;margin-bottom:1rem;">FAXで届いた依頼書の画像をアップロードするとAIが自動読み取りします。</p>
+  <div class="drop-zone" id="ocr-drop-zone" onclick="document.getElementById('ocr-file-input').click()">
+    <input type="file" id="ocr-file-input" accept="image/*" style="display:none">
+    <div style="font-size:40px;margin-bottom:10px;">📄</div>
+    <p style="font-size:15px;font-weight:500;">FAX依頼書の画像をドロップ</p>
+    <p style="font-size:13px;color:#888;margin-top:4px;">JPG / PNG / WEBP 対応</p>
+  </div>
+</div>
+<div class="card" id="ocr-preview-card" style="display:none;">
+  <div class="card-title">🖼️ アップロード画像</div>
+  <img id="ocr-preview-img" style="width:100%;max-height:400px;object-fit:contain;border-radius:8px;border:1px solid #e0e8f0;">
+  <div class="btn-row">
+    <button class="btn btn-primary" onclick="runOcrAnalysis()">🔍 AI-OCRで読み取る</button>
+    <button class="btn btn-outline" onclick="resetOcr()">やり直す</button>
+  </div>
+  <div class="alert alert-error" id="ocr-error"></div>
+</div>
+<div class="card" id="ocr-result-card" style="display:none;">
+  <div class="card-title">✅ OCR読み取り結果</div>
+  <div id="ocr-result-display"></div>
+  <div class="btn-row">
+    <button class="btn btn-success" onclick="applyOcrToForm()">📝 フォームに反映</button>
+    <button class="btn btn-outline" onclick="resetOcr()">やり直す</button>
+  </div>
+</div>
+</div>
+
+<!-- タブ: AI計画書 -->
+<div class="panel" id="panel-plan">
+<div class="card">
+  <div class="card-title">🤖 AI訪問介護計画書（仮版）作成</div>
+  <div class="form-group" style="margin-bottom:1rem;"><label>対象の依頼書を選択</label><select id="plan-target" style="width:100%;"><option value="">-- 保存済み依頼書から選択 --</option></select></div>
+  <div class="btn-row"><button class="btn btn-primary" onclick="generatePlan()">🤖 AI計画書を作成</button></div>
+  <div class="alert alert-error" id="plan-error"></div>
+</div>
+<div class="card" id="plan-result-card" style="display:none;">
+  <div class="card-title"><span>📋 訪問介護計画書（仮版）</span></div>
+  <div id="plan-result" class="plan-output"></div>
+  <div class="btn-row">
+    <button class="btn btn-success" onclick="savePlanToSheet()">💾 スプレッドシート保存</button>
+    <button class="btn btn-outline" onclick="copyPlan()">📋 コピー</button>
+    <button class="btn btn-outline" onclick="printPlan()">🖨️ 印刷</button>
+  </div>
+  <div class="alert alert-success" id="plan-save-success"></div>
+</div>
+</div>
+
+<!-- タブ: 依頼一覧 -->
+<div class="panel" id="panel-list">
+<div class="card">
+  <div class="card-title" style="justify-content:space-between;flex-wrap:wrap;gap:8px;"><span>📋 依頼一覧</span>
+    <div style="display:flex;gap:8px;"><button class="btn btn-primary" style="padding:6px 14px;font-size:13px;" onclick="syncFromSheet()">📥 同期</button><button class="btn btn-danger" style="padding:6px 14px;font-size:13px;" onclick="deleteSelectedIrai()">🗑️ 選択削除</button></div>
+  </div>
+  <div class="table-wrap"><table><thead><tr><th><input type="checkbox" id="list-check-all" onchange="toggleAllListCheck(this)"></th><th>依頼日</th><th>利用者名</th><th>認定結果</th><th>希望開始日</th><th>サービス種別</th><th>依頼元</th><th>ステータス</th><th>操作</th></tr></thead><tbody id="list-tbody"><tr><td colspan="9" style="text-align:center;color:#aaa;padding:2rem;">データがありません</td></tr></tbody></table></div>
+</div>
+</div>
+
+<!-- タブ: 設定 -->
+<div class="panel" id="panel-settings">
+<div class="card" id="settings-lock">
+  <div class="card-title">🔒 管理者認証</div>
+  <p style="font-size:13px;color:#666;margin-bottom:1rem;">設定画面は管理者権限が必要です。</p>
+  <div style="display:flex;gap:8px;max-width:360px;">
+    <input type="password" id="admin-password" placeholder="管理者パスワード" style="flex:1;font-size:14px;padding:9px 12px;border:1px solid #d0dae6;border-radius:8px;" onkeydown="if(event.key==='Enter')unlockSettings()">
+    <button class="btn btn-primary" onclick="unlockSettings()">🔓 ログイン</button>
+  </div>
+  <div id="admin-error" style="font-size:13px;color:#dc2626;margin-top:8px;display:none;"></div>
+</div>
+<div id="settings-content" style="display:none;">
+<div class="card">
+  <div class="card-title"><span>⚙️ 外部連携設定</span><span class="badge badge-green" style="margin-left:auto;">🔓 管理者</span></div>
+  <div style="border:1px solid #a7f3d0;background:#ecfdf5;border-radius:10px;padding:1.25rem;margin-bottom:1rem;">
+    <div style="font-weight:600;margin-bottom:6px;color:#047857;">📗 Googleスプレッドシート連携</div>
+    <div style="display:flex;gap:8px;"><input type="text" id="settings-gas-url" placeholder="https://script.google.com/macros/s/.../exec" style="flex:1;font-size:13px;"><button class="btn btn-primary" onclick="saveSettingsGasUrl()">保存</button></div>
+    <div id="settings-gas-status" style="font-size:12px;color:#888;margin-top:6px;"></div>
+  </div>
+  <div style="border:1px solid #d1fae5;background:#f0fdf4;border-radius:10px;padding:1.25rem;margin-bottom:1rem;">
+    <div style="font-weight:600;margin-bottom:6px;color:#065f46;">🤖 AI APIエンドポイント</div>
+    <div style="display:flex;gap:8px;"><input type="text" id="settings-api-url" style="flex:1;font-size:13px;" value="https://raspy-disk-468d.tetsuya-shimoda-y.workers.dev/api/anthropic"><button class="btn btn-primary" onclick="saveSettingsApiUrl()">保存</button></div>
+    <div id="settings-api-status" style="font-size:12px;color:#888;margin-top:6px;"></div>
+  </div>
+  <button class="btn btn-outline" onclick="lockSettings()">🔒 設定をロック</button>
+</div>
+</div>
+</div>
+
+</div><!-- /.container -->
+
+<!-- ローディング -->
+<div class="loading-overlay" id="loading"><div class="loading-box"><div class="spinner"></div><div id="loading-text">処理中...</div></div></div>
+
+<style>
+.tabs { display:flex; gap:4px; margin-bottom:1.5rem; background:#fff; border-radius:10px; padding:4px; box-shadow:0 1px 4px rgba(0,0,0,0.08); width:fit-content; flex-wrap:wrap; }
+.tab { padding:10px 20px; border-radius:7px; border:none; background:none; font-size:14px; font-weight:500; color:#666; cursor:pointer; }
+.tab.active { background:#00704A; color:#fff; }
+.tab:hover:not(.active) { background:#ecfdf5; }
+.panel { display:none; } .panel.active { display:block; }
+.card { background:#fff; border-radius:14px; box-shadow:0 1px 6px rgba(0,0,0,0.08); padding:1.5rem; margin-bottom:1.25rem; }
+.card-title { font-size:17px; font-weight:600; color:#00704A; margin-bottom:1rem; display:flex; align-items:center; gap:8px; }
+.section-title { font-size:15px; font-weight:600; color:#047857; margin-bottom:0.75rem; padding-bottom:6px; border-bottom:2px solid #d1fae5; }
+.form-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+.form-group { display:flex; flex-direction:column; gap:4px; } .form-group.full { grid-column:1/-1; }
+label { font-size:13px; font-weight:600; color:#555; }
+input, select, textarea { padding:10px 14px; border:1px solid #d0dae6; border-radius:8px; font-size:16px; color:#1a1a1a; background:#fff; font-family:inherit; }
+input:focus, select:focus, textarea:focus { outline:none; border-color:#00704A; box-shadow:0 0 0 3px rgba(0,112,74,0.1); }
+textarea { resize:vertical; min-height:60px; }
+.checkbox-group { display:flex; flex-wrap:wrap; gap:10px 18px; margin-top:4px; }
+.check-label { font-size:15px; display:flex; align-items:center; gap:5px; cursor:pointer; font-weight:400; color:#333; }
+.schedule-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap; }
+.schedule-row select, .schedule-row input { font-size:13px; padding:7px 10px; }
+.btn { padding:12px 22px; border-radius:8px; border:none; font-size:15px; font-weight:500; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+.btn:disabled { opacity:0.5; cursor:not-allowed; }
+.btn-primary { background:#00704A; color:#fff; } .btn-primary:hover:not(:disabled) { background:#005c3e; }
+.btn-success { background:#16a34a; color:#fff; } .btn-danger { background:#dc2626; color:#fff; }
+.btn-outline { background:#fff; color:#444; border:1px solid #ccc; } .btn-outline:hover { background:#f5f5f5; }
+.btn-row { display:flex; gap:10px; margin-top:1rem; flex-wrap:wrap; }
+.btn-small { padding:4px 10px; font-size:12px; border-radius:6px; border:none; cursor:pointer; }
+.btn-danger-small { background:#fecaca; color:#dc2626; }
+.alert { display:none; padding:12px 16px; border-radius:8px; font-size:13px; margin-top:1rem; }
+.alert-error { background:#fef2f2; border:1px solid #fecaca; color:#dc2626; }
+.alert-success { background:#f0fdf4; border:1px solid #bbf7d0; color:#15803d; }
+.badge-green { background:#dcfce7; color:#15803d; padding:3px 10px; border-radius:20px; font-size:12px; font-weight:600; }
+.table-wrap { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; font-size:14px; }
+th { background:#f0f7f4; padding:10px 12px; text-align:left; font-weight:600; color:#1b7a52; font-size:13px; }
+td { padding:10px 12px; border-bottom:1px solid #f0f7f4; }
+.drop-zone { border:2px dashed #a7f3d0; border-radius:12px; padding:2.5rem 1rem; text-align:center; cursor:pointer; background:#f0fdf4; }
+.drop-zone:hover { border-color:#00704A; background:#ecfdf5; }
+.plan-output { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:1.5rem; font-size:14px; line-height:1.8; white-space:pre-wrap; max-height:600px; overflow-y:auto; }
+.loading-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:9999; justify-content:center; align-items:center; }
+.loading-overlay.show { display:flex; }
+.loading-box { background:#fff; border-radius:16px; padding:2rem 3rem; text-align:center; }
+.spinner { width:40px; height:40px; border:4px solid #e5e7eb; border-top-color:#00704A; border-radius:50%; animation:spin 0.8s linear infinite; margin:0 auto 1rem; }
+@keyframes spin { to { transform:rotate(360deg); } }
+@media (max-width:600px) { .form-grid { grid-template-columns:1fr; } .tabs { width:100%; } }
+</style>
+
+<script>
+const JIGYOSHO_MASTER = [
+{name:'やさしい手渋谷東訪問介護事業所',no:'1371301480',tel:'050-1752-0681',fax:'050-3535-7807',address:'東京都渋谷区東2-26-14 NN BLDG．3階',sekininsha:'今野 敬子'},
+{name:'やさしい手大田訪問介護事業所',no:'1371100577',tel:'050-1752-0683',fax:'050-3535-7808',address:'東京都大田区西蒲田5-27-13 KSビル5階',sekininsha:'相馬 優子'},
+{name:'やさしい手自由が丘訪問介護事業所',no:'1371000843',tel:'050-1752-0679',fax:'050-3730-7751',address:'東京都目黒区自由が丘2-11-10 パルシィード4階',sekininsha:'向野 千代美'},
+{name:'やさしい手学芸大学訪問介護事業所',no:'1371003508',tel:'050-1752-0680',fax:'050-3535-7819',address:'東京都目黒区碑文谷5-20-1 ドゥオールビル201号室',sekininsha:'向野 千代美'},
+{name:'やさしい手葛飾訪問介護事業所',no:'1372200632',tel:'050-1752-1311',fax:'050-3535-7851',address:'東京都葛飾区金町6-10-1 ベルハイツ1階',sekininsha:'島田 和貴'},
+{name:'やさしい手新小岩訪問介護事業所',no:'1372201671',tel:'050-1752-1312',fax:'050-3535-7852',address:'東京都葛飾区新小岩1-40-10 リバティーヌ喜久屋2F',sekininsha:'大森 豊'},
+{name:'やさしい手新宿訪問介護事業所',no:'1370401174',tel:'050-1752-1331',fax:'050-3535-7861',address:'東京都新宿区西新宿7-5-20 旭ビルA館601号',sekininsha:'菊池 早苗'},
+{name:'やさしい手石神井公園訪問介護事業所',no:'1372001659',tel:'050-1752-0244',fax:'050-3535-7862',address:'東京都練馬区石神井町2-13-17 龍英ビル3階',sekininsha:'新沼 実'},
+{name:'やさしい手練馬訪問介護事業所',no:'1372003895',tel:'050-1751-6415',fax:'050-3535-7864',address:'東京都練馬区豊玉北5-25-21 エクセレントハイム101',sekininsha:'新沼 実'},
+{name:'やさしい手千葉訪問介護事業所',no:'1270100553',tel:'050-1752-1284',fax:'050-3535-7881',address:'千葉県千葉市中央区新田町4-22 サンライト202号室',sekininsha:'西出 加奈子'},
+{name:'やさしい手逗子訪問介護事業所',no:'1472500097',tel:'050-1743-8963',fax:'050-3535-7781',address:'神奈川県逗子市逗子5-6-7 興和第二ビル5階',sekininsha:'椙田 梨々香'},
+{name:'やさしい手金沢文庫訪問介護事業所',no:'1470801646',tel:'050-1752-0260',fax:'050-3730-7760',address:'神奈川県横浜市金沢区釜利谷東2-16-30 高野ビル3階',sekininsha:'川口 有美'},
+{name:'やさしい手磯子訪問介護事業所',no:'1470701911',tel:'050-1752-0259',fax:'050-3535-7783',address:'神奈川県横浜市磯子区中原2-7-2 ニッコービル1階',sekininsha:'豊嶋 陽子'},
+{name:'やさしい手横須賀訪問介護事業所',no:'1471906550',tel:'050-1752-0258',fax:'050-3535-7784',address:'神奈川県横須賀市日の出町1-7',sekininsha:'大浦 愛'},
+{name:'やさしい手あざみ野訪問介護事業所',no:'1473700100',tel:'050-1752-0667',fax:'050-3535-7785',address:'神奈川県横浜市青葉区美しが丘5-35-2',sekininsha:'名取 奈津子'},
+{name:'やさしい手青葉台訪問介護事業所',no:'1473701280',tel:'050-1751-6535',fax:'050-3535-7788',address:'神奈川県横浜市青葉区青葉台2-6-1',sekininsha:'吉田 信彦'},
+{name:'やさしい手日吉訪問介護事業所',no:'1470900463',tel:'050-1752-0263',fax:'050-3535-7794',address:'神奈川県横浜市港北区日吉本町1-4-12',sekininsha:'吉田 信彦'},
+{name:'やさしい手菊名訪問介護事業所',no:'1470901198',tel:'050-1751-5156',fax:'050-3737-9571',address:'神奈川県横浜市港北区錦が丘1-1-11',sekininsha:'鈴木 日香梨'},
+{name:'やさしい手新横浜訪問介護事業所',no:'1470903327',tel:'050-1752-0261',fax:'050-3535-7782',address:'神奈川県横浜市港北区新横浜1-23-5',sekininsha:'矢座 瑞穂'},
+{name:'やさしい手日暮里訪問介護事業所',no:'1371800952',tel:'050-1752-1321',fax:'050-3535-7853',address:'東京都荒川区東日暮里5-52-2 神谷ビル501',sekininsha:'南東 奈緒喜'},
+{name:'やさしい手竹ノ塚訪問介護事業所',no:'1372110476',tel:'050-1752-9648',fax:'050-3535-7856',address:'東京都足立区東伊興3-21-5 フューチャー本社ビル4階',sekininsha:'田渕 ひかり'},
+{name:'やさしい手赤羽訪問介護事業所',no:'1371700590',tel:'050-1752-1341',fax:'050-3535-7854',address:'東京都北区赤羽2-69-4 クリニックプラザ21 3階',sekininsha:'田沼 美加'},
+{name:'やさしい手浅草訪問介護事業所',no:'1370602946',tel:'050-1752-1310',fax:'050-3535-7855',address:'東京都台東区浅草2-34-11 リファイズ浅草401',sekininsha:'田渕 ひかり'},
+{name:'やさしい手浦和北訪問介護事業所',no:'1176506978',tel:'050-1751-2846',fax:'050-3535-7894',address:'埼玉県さいたま市浦和区常盤9-10-2 2階',sekininsha:'籾山 るみ子'},
+{name:'やさしい手大宮訪問介護事業所',no:'1170301012',tel:'050-1751-5022',fax:'050-3535-7895',address:'埼玉県さいたま市大宮区宮町2-56-2 宮崎ビル3階',sekininsha:'金田 敏子'},
+{name:'やさしい手上尾訪問介護事業所',no:'1171601451',tel:'050-1751-8246',fax:'050-3535-7896',address:'埼玉県上尾市柏座1-12-20 天沼ビル2階',sekininsha:'金田 敏子'},
+{name:'やさしい手川口芝新町訪問介護事業所',no:'1170201048',tel:'050-1752-0253',fax:'050-3535-7900',address:'埼玉県川口市芝新町7-6 増田ビル3階',sekininsha:'島崎 昌美'},
+{name:'やさしい手川越訪問介護事業所',no:'1170402646',tel:'050-1752-0248',fax:'050-3535-7909',address:'埼玉県川越市菅原町23-11 菅原町ビル2階',sekininsha:'大内 舞'},
+{name:'やさしい手川口幸町訪問介護事業所',no:'1170205031',tel:'050-1752-0249',fax:'050-3535-7910',address:'埼玉県川口市幸町2-2-16 クレールマルシェ川口3階',sekininsha:'新 なほ'},
+{name:'やさしい手下高井戸訪問介護事業所',no:'1371204031',tel:'050-1751-8452',fax:'050-3535-7822',address:'東京都世田谷区松原3-30-15 シャイロビル2階',sekininsha:'齋藤 奈々江'},
+{name:'やさしい手東松原訪問介護事業所',no:'1371213776',tel:'050-1751-8454',fax:'050-3535-7843',address:'東京都世田谷区松原5-26-15',sekininsha:'安尾 美江'},
+{name:'やさしい手用賀訪問介護事業所',no:'1371204023',tel:'050-1752-1304',fax:'050-3535-7849',address:'東京都世田谷区用賀2-31-7 イイダアネックスⅠ 2階A',sekininsha:'鶴田 貴之'},
+{name:'やさしい手三軒茶屋訪問介護事業所',no:'1371201797',tel:'050-1752-1303',fax:'050-3535-7820',address:'東京都世田谷区太子堂1-12-39 三軒茶屋ビル2F',sekininsha:'川越 由美子'},
+{name:'やさしい手祖師谷訪問介護事業所',no:'1371202571',tel:'050-1751-8455',fax:'050-3535-7821',address:'東京都世田谷区祖師谷三丁目36-30 和幸ビル202号',sekininsha:'芦田 久美子'},
+{name:'やさしい手江坂訪問介護事業所',no:'2771601362',tel:'050-1751-5948',fax:'050-3730-7770',address:'大阪府吹田市江坂町1-17-26 エスプリ江坂4階',sekininsha:'木下 茂也'},
+{name:'やさしい手豊中岡町訪問介護事業所',no:'2774007625',tel:'050-1751-3275',fax:'050-3730-7772',address:'大阪府豊中市岡町3-6 アソルティ岡町302号室',sekininsha:'山本 美奈子'},
+{name:'やさしい手東淀川訪問介護事業所',no:'2773004151',tel:'050-1741-3529',fax:'050-3730-7776',address:'大阪府大阪市東淀川区豊新5-17-7',sekininsha:'木下 茂也'},
+{name:'やさしい手茨木訪問介護事業所',no:'2774203018',tel:'050-1751-6006',fax:'050-3730-7777',address:'大阪府茨木市末広町1-1 井原興産ビル2階',sekininsha:'山本 美奈子'},
+{name:'やさしい手神戸西訪問介護事業所',no:'2875201390',tel:'050-1751-6417',fax:'050-3730-7779',address:'兵庫県神戸市西区糀台5-6-1 西区文化センタービル6階',sekininsha:'堀北 英里香'},
+{name:'やさしい手西明石訪問介護事業所',no:'2872003310',tel:'050-1751-6586',fax:'050-3730-7780',address:'兵庫県明石市松の内2-4-10 ユタカ第一ビル4階',sekininsha:'森 咲奈'},
+{name:'やさしい手中野北口訪問介護事業所',no:'1371400407',tel:'050-1752-1333',fax:'050-3535-7859',address:'東京都中野区新井2-30-4 IFOビル3階',sekininsha:'大武 和史'},
+{name:'やさしい手中野南口訪問介護事業所',no:'1371402262',tel:'050-1752-0657',fax:'050-3535-7860',address:'東京都中野区中央3-50-9 ワタナベセカンドビル2階',sekininsha:'河井 信太郎'},
+{name:'やさしい手荻窪訪問介護事業所',no:'1371501493',tel:'050-1751-7196',fax:'050-3730-7754',address:'東京都杉並区上荻1-16-16 喜屋ビル4階',sekininsha:'花形 奈津美'},
+{name:'やさしい手三鷹訪問介護事業所',no:'1373600129',tel:'050-1752-0674',fax:'050-3535-7866',address:'東京都三鷹市下連雀4-15-41 コーポレート連雀店舗棟2階',sekininsha:'小島 慎吾'},
+{name:'やさしい手吉祥寺訪問介護事業所',no:'1373300993',tel:'050-1752-1340',fax:'050-3535-7867',address:'東京都武蔵野市吉祥寺東町1-10-21 西郊ビル3階',sekininsha:'浜田 廣輝'},
+{name:'やさしい手武蔵境訪問介護事業所',no:'1373301330',tel:'050-1751-6297',fax:'050-3535-7868',address:'東京都武蔵野市境南町2-9-1 山口ビル4階',sekininsha:'吉田 隆人'},
+{name:'やさしい手日野訪問介護事業所',no:'1373500196',tel:'050-1752-1369',fax:'050-3535-7878',address:'東京都日野市大坂上1-32-5 エトワール渡辺ビル5階',sekininsha:'飯島 朋子'},
+{name:'やさしい手小平訪問介護事業所',no:'1374300265',tel:'050-1752-0673',fax:'050-3535-7879',address:'東京都小平市学園東町1-2-6 メイコウビル3階',sekininsha:'三春 真由美'},
+{name:'やさしい手平安通訪問介護事業所',no:'2370301513',tel:'050-1751-2826',fax:'050-3730-7765',address:'愛知県名古屋市北区平安通1-5 ヴュロードリベルテ3階',sekininsha:'高橋 真寿美'},
+{name:'やさしい手小幡訪問介護事業所',no:'2371301140',tel:'050-1749-7890',fax:'050-3730-7768',address:'愛知県名古屋市守山区小幡中1-33-2',sekininsha:'近藤 竜'},
+{name:'やさしい手庄内通訪問介護事業所',no:'2370401586',tel:'050-1741-9652',fax:'050-3730-7769',address:'愛知県名古屋市西区庄内通3-34',sekininsha:'近藤 竜'},
+{name:'やさしい手横浜南訪問介護事業所',no:'1470503572',tel:'050-1707-4288',fax:'050-3535-1110',address:'神奈川県横浜市南区新川町5-28-17',sekininsha:'川口 有美'},
+{name:'やさしい手辻堂訪問介護事業所',no:'1472207685',tel:'050-1707-4374',fax:'050-3535-3158',address:'神奈川県藤沢市辻堂2-8-9 露木ビル3階',sekininsha:'鈴木 日香梨'},
+{name:'やさしい手小田急相模原訪問介護事業所',no:'1472612728',tel:'050-1707-4375',fax:'050-3535-3159',address:'神奈川県相模原市南区松が枝町1-19',sekininsha:'鈴木 日香梨'},
+{name:'やさしい手上石神井訪問介護事業所',no:'1372013027',tel:'050-1752-0663',fax:'050-3737-9951',address:'東京都練馬区上石神井2-9-21',sekininsha:'金子 祐也'},
+{name:'やさしい手西台訪問介護事業所',no:'1371911924',tel:'050-1752-1339',fax:'050-3535-7865',address:'東京都板橋区西台2-24-15',sekininsha:'福田 真里江'},
+{name:'やさしい手太子堂訪問介護事業所',no:'1371216456',tel:'050-1752-1882',fax:'050-3730-7752',address:'東京都世田谷区太子堂3-38-20',sekininsha:'小野 友海'},
+{name:'やさしい手千歳烏山訪問介護事業所',no:'1371212067',tel:'050-1752-0677',fax:'050-3535-7850',address:'東京都世田谷区南烏山6-10-9',sekininsha:'五十嵐 伸悟'},
+{name:'やさしい手上板橋訪問介護事業所',no:'1371909571',tel:'050-1752-1338',fax:'050-3535-7863',address:'東京都板橋区上板橋1-12-2',sekininsha:'藤井 辰功'},
+{name:'やさしい手日野南平訪問介護事業所',no:'1373502408',tel:'050-1752-0664',fax:'050-3730-7756',address:'東京都日野市南平4-40-5',sekininsha:'山田 信也'},
+{name:'やさしい手平尾訪問介護事業所',no:'1375100623',tel:'050-1751-8373',fax:'050-3535-7880',address:'東京都稲城市平尾3-7-4',sekininsha:'熊倉 麻子'},
+{name:'やさしい手小山訪問介護事業所',no:'0970803136',tel:'050-1753-5621',fax:'050-3535-9258',address:'栃木県小山市駅南町2-17-2',sekininsha:'東林 真季子'},
+];
+const DEFAULT_API_URL = 'https://raspy-disk-468d.tetsuya-shimoda-y.workers.dev/api/anthropic';
+const ADMIN_PASSWORD = '8341';
+let currentMode = 'cm';
+function getApiUrl() { return localStorage.getItem('iraisho_api_url') || DEFAULT_API_URL; }
+function getGasUrl() { return localStorage.getItem('iraisho_gas_url') || ''; }
+function getIraishoList() { return JSON.parse(localStorage.getItem('iraisho_data') || '[]'); }
+function saveIraishoList(list) { localStorage.setItem('iraisho_data', JSON.stringify(list)); }
+function getJigyoshoData() { const c = localStorage.getItem('iraisho_jigyosho_master'); return c ? JSON.parse(c) : JIGYOSHO_MASTER; }
+function saveJigyoshoData(data) { localStorage.setItem('iraisho_jigyosho_master', JSON.stringify(data)); }
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  if(event&&event.target)event.target.classList.add('active');
+  const panel = document.getElementById('panel-'+name);
+  if(panel) panel.classList.add('active');
+  if(name==='plan') refreshPlanSelect();
+  if(name==='list') renderList();
+  if(name==='cm-done') renderCmDone();
+}
+function switchTabDirect(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+}
+function showLoading(t){document.getElementById('loading-text').textContent=t||'処理中...';document.getElementById('loading').classList.add('show');}
+function hideLoading(){document.getElementById('loading').classList.remove('show');}
+function showAlert(id,msg){const el=document.getElementById(id);el.textContent=msg;el.style.display='block';setTimeout(()=>{el.style.display='none';},5000);}
+
+// モード切替
+function showAdminLogin(){document.getElementById('admin-login-modal').style.display='flex';document.getElementById('admin-modal-pw').focus();}
+function closeAdminLogin(){document.getElementById('admin-login-modal').style.display='none';document.getElementById('admin-modal-pw').value='';document.getElementById('admin-modal-error').style.display='none';}
+function adminLogin(){
+  if(document.getElementById('admin-modal-pw').value===ADMIN_PASSWORD){currentMode='admin';closeAdminLogin();applyMode();}
+  else{document.getElementById('admin-modal-error').textContent='❌ パスワードが正しくありません';document.getElementById('admin-modal-error').style.display='block';document.getElementById('admin-modal-pw').value='';}
+}
+function logoutAdmin(){currentMode='cm';applyMode();}
+function applyMode(){
+  const isAdmin=currentMode==='admin';
+  document.getElementById('cm-tabs').style.display=isAdmin?'none':'flex';
+  document.getElementById('admin-tabs').style.display=isAdmin?'flex':'none';
+  document.getElementById('header-cm').style.display=isAdmin?'none':'flex';
+  document.getElementById('header-admin').style.display=isAdmin?'flex':'none';
+  document.getElementById('mode-bar').style.background=isAdmin?'#d1fae5':'#fff3cd';
+  document.getElementById('mode-label').innerHTML=isAdmin?'🏢 事業所管理モード <button onclick="logoutAdmin()" style="background:none;border:1px solid #6ee7b7;border-radius:6px;padding:2px 10px;font-size:12px;cursor:pointer;color:#047857;margin-left:8px;">ログアウト</button>':'';
+  const planBtn=document.getElementById('btn-save-plan');if(planBtn)planBtn.style.display=isAdmin?'inline-flex':'none';
+  switchTabDirect('input');
+}
+
+// QRコード
+function showQrModal(){document.getElementById('qr-modal').style.display='flex';const s=localStorage.getItem('iraisho_qr_url')||'';const i=document.getElementById('qr-url-input');if(s)i.value=s;else if(!i.value&&window.location.href.startsWith('http'))i.value=window.location.href.split('?')[0].split('#')[0];if(i.value)generateQRModal();}
+function closeQrModal(){document.getElementById('qr-modal').style.display='none';}
+function generateQRModal(){const url=document.getElementById('qr-url-input').value.trim();if(!url){alert('URLを入力してください');return;}localStorage.setItem('iraisho_qr_url',url);const a=document.getElementById('qr-modal-area');a.innerHTML='';document.getElementById('qr-modal-url').textContent=url;new QRCode(a,{text:url,width:200,height:200,colorDark:'#00704A',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});}
+function printQR(){const img=document.querySelector('#qr-modal-area img')||document.querySelector('#qr-modal-area canvas');if(!img){alert('先にQRコードを生成してください');return;}const url=localStorage.getItem('iraisho_qr_url')||'';const imgData=img.src||img.toDataURL('image/png');const w=window.open('','_blank');w.document.write('<html><head><title>QRコード</title><style>body{font-family:sans-serif;text-align:center;padding:2rem;}h1{font-size:20px;color:#00704A;}img{width:250px;height:250px;margin:1rem;}.url{font-size:11px;color:#888;word-break:break-all;}</style></head><body><h1>📋 サービス利用依頼書</h1><p>在宅介護 やさしい手<br>QRコードを読み取って依頼書をご入力ください</p><img src="'+imgData+'"><div class="url">'+url+'</div></body></html>');w.document.close();setTimeout(()=>w.print(),500);}
+</script>
+
+<script>
+// 事業所セレクト
+function initJigyoshoSelect(){const sel=document.getElementById('to-jigyosho-select');const data=getJigyoshoData();sel.innerHTML='<option value="">-- 事業所を選択 --</option>';data.forEach((j,i)=>{sel.innerHTML+=`<option value="${i}">${j.name}</option>`;});}
+function onJigyoshoSelect(){const idx=document.getElementById('to-jigyosho-select').value;if(idx===''){document.getElementById('to-jigyosho-no').value='';document.getElementById('to-jigyosho-name').value='';document.getElementById('to-tel').value='';document.getElementById('to-fax').value='';document.getElementById('to-address').value='';document.getElementById('to-tanto').value='';return;}const j=getJigyoshoData()[parseInt(idx)];document.getElementById('to-jigyosho-no').value=j.no;document.getElementById('to-jigyosho-name').value=j.name;document.getElementById('to-tel').value=j.tel;document.getElementById('to-fax').value=j.fax;document.getElementById('to-address').value=j.address||'';document.getElementById('to-tanto').value=j.sekininsha||'';}
+// スケジュール行
+function addScheduleRow(){document.getElementById('schedule-rows').insertAdjacentHTML('beforeend','<div class="schedule-row"><select class="sch-day"><option value="">曜日</option><option>月</option><option>火</option><option>水</option><option>木</option><option>金</option><option>土</option><option>日</option></select><input type="time" class="sch-start"><span>～</span><input type="time" class="sch-end"><select class="sch-type"><option value="身体">身体</option><option value="生活">生活</option><option value="総合事業11">総合事業11</option><option value="総合事業12">総合事業12</option></select><button class="btn-small btn-danger-small" onclick="this.closest(\'.schedule-row\').remove()">✕</button></div>');}
+// ケアマネ情報保存/読込
+function saveCmProfile(){const p={fromJigyoshoNo:document.getElementById('from-jigyosho-no').value,fromJigyoshoName:document.getElementById('from-jigyosho-name').value,fromTel:document.getElementById('from-tel').value,fromFax:document.getElementById('from-fax').value,fromTanto:document.getElementById('from-tanto').value};localStorage.setItem('iraisho_cm_profile',JSON.stringify(p));alert('✅ 依頼元情報を保存しました。次回自動で読み込まれます。');}
+function loadCmProfile(){const s=localStorage.getItem('iraisho_cm_profile');if(!s){alert('保存済みの情報がありません。');return;}const p=JSON.parse(s);if(p.fromJigyoshoNo)document.getElementById('from-jigyosho-no').value=p.fromJigyoshoNo;if(p.fromJigyoshoName)document.getElementById('from-jigyosho-name').value=p.fromJigyoshoName;if(p.fromTel)document.getElementById('from-tel').value=p.fromTel;if(p.fromFax)document.getElementById('from-fax').value=p.fromFax;if(p.fromTanto)document.getElementById('from-tanto').value=p.fromTanto;}
+function autoLoadCmProfile(){const s=localStorage.getItem('iraisho_cm_profile');if(!s)return;const p=JSON.parse(s);if(p.fromJigyoshoNo)document.getElementById('from-jigyosho-no').value=p.fromJigyoshoNo;if(p.fromJigyoshoName)document.getElementById('from-jigyosho-name').value=p.fromJigyoshoName;if(p.fromTel)document.getElementById('from-tel').value=p.fromTel;if(p.fromFax)document.getElementById('from-fax').value=p.fromFax;if(p.fromTanto)document.getElementById('from-tanto').value=p.fromTanto;}
+// フォームデータ収集
+function collectFormData(){
+  const schedules=[];document.querySelectorAll('.schedule-row').forEach(r=>{const d=r.querySelector('.sch-day').value,s=r.querySelector('.sch-start').value,e=r.querySelector('.sch-end').value,t=r.querySelector('.sch-type').value;if(d||s||e)schedules.push({day:d,start:s,end:e,type:t});});
+  const services=[];document.querySelectorAll('.checkbox-group input[type=checkbox]:checked').forEach(cb=>{services.push(cb.closest('.check-label').textContent.trim());});
+  return{id:'IRAI-'+Date.now(),iraiDate:document.getElementById('irai-date').value,serviceType:document.getElementById('service-type').value,fromJigyoshoNo:document.getElementById('from-jigyosho-no').value,fromJigyoshoName:document.getElementById('from-jigyosho-name').value,fromTel:document.getElementById('from-tel').value,fromFax:document.getElementById('from-fax').value,fromTanto:document.getElementById('from-tanto').value,toJigyoshoNo:document.getElementById('to-jigyosho-no').value,toJigyoshoName:document.getElementById('to-jigyosho-name').value,toTel:document.getElementById('to-tel').value,toFax:document.getElementById('to-fax').value,toTanto:document.getElementById('to-tanto').value,jukyushaShikaku:document.getElementById('jukyusha-shikaku').value,hokensha:document.getElementById('hokensha').value,hihokenshaNo:document.getElementById('hihokensha-no').value,userKana:document.getElementById('user-kana').value,userName:document.getElementById('user-name').value,userSex:document.getElementById('user-sex').value,userBirthday:document.getElementById('user-birthday').value,userAddress:document.getElementById('user-address').value,userTel:document.getElementById('user-tel').value,emergencyName:document.getElementById('emergency-name').value,emergencyTel:document.getElementById('emergency-tel').value,ninteiKekka:document.getElementById('nintei-kekka').value,ninteiStart:document.getElementById('nintei-start').value,ninteiEnd:document.getElementById('nintei-end').value,seikatsuHogo:document.getElementById('seikatsu-hogo').value,kouhiFutan:document.getElementById('kouhi-futan').value,jukyushaNo:document.getElementById('jukyusha-no').value,shikkan:document.getElementById('shikkan').value,kiousho:document.getElementById('kiousho').value,kusuri:document.getElementById('kusuri').value,rehab:document.getElementById('rehab').value,shougaiJiritsu:document.getElementById('shougai-jiritsu').value,ninchiJiritsu:document.getElementById('ninchi-jiritsu').value,kibouStartDate:document.getElementById('kibou-start-date').value,services,schedules,bikou:document.getElementById('bikou').value,kaigoMokuhyou:document.getElementById('kaigo-mokuhyou').value,status:'受付済',registeredAt:new Date().toLocaleString('ja-JP')};
+}
+</script>
+
+<script>
+// 保存・送信
+async function saveIraisho(){const data=collectFormData();if(!data.userName){showAlert('save-error','利用者名は必須です');return;}const list=getIraishoList();list.unshift(data);saveIraishoList(list);localStorage.setItem('iraisho_cm_profile',JSON.stringify({fromJigyoshoNo:data.fromJigyoshoNo,fromJigyoshoName:data.fromJigyoshoName,fromTel:data.fromTel,fromFax:data.fromFax,fromTanto:data.fromTanto}));await pushToSheet(data);showAlert('save-success',`依頼書を送信しました（${data.userName}様）`);}
+async function saveAndCreatePlan(){const data=collectFormData();if(!data.userName){showAlert('save-error','利用者名は必須です');return;}const list=getIraishoList();list.unshift(data);saveIraishoList(list);await pushToSheet(data);switchTabDirect('plan');refreshPlanSelect();document.getElementById('plan-target').value=data.id;await generatePlan();}
+function clearForm(){if(!confirm('フォームをクリアしますか？'))return;document.querySelectorAll('#panel-input input:not([readonly]),#panel-input textarea,#panel-input select').forEach(el=>{if(el.type==='checkbox')el.checked=false;else if(!el.hasAttribute('readonly'))el.value='';});}
+async function pushToSheet(data){const gasUrl=getGasUrl();if(!gasUrl)return;try{await fetch(gasUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'append',sheetName:'依頼書データ',records:[{id:data.id,iraiDate:data.iraiDate,userName:data.userName,userKana:data.userKana,serviceType:data.serviceType,ninteiKekka:data.ninteiKekka,fromJigyoshoName:data.fromJigyoshoName,fromTanto:data.fromTanto,kibouStartDate:data.kibouStartDate,services:(data.services||[]).join('、'),schedules:(data.schedules||[]).map(s=>`${s.day}${s.start}~${s.end}(${s.type})`).join('/'),shikkan:data.shikkan,bikou:data.bikou,status:data.status,registeredAt:data.registeredAt}]})});}catch(e){console.warn('送信エラー:',e);}}
+async function syncFromSheet(){const gasUrl=getGasUrl();if(!gasUrl){alert('設定でスプレッドシートURLを設定してください');return;}showLoading('同期中...');try{const r=await fetch(gasUrl+'?sheetName=依頼書データ');const j=await r.json();if(j.success)alert('同期完了:'+((j.records||[]).length)+'件');else alert('エラー:'+j.error);}catch(e){alert('失敗:'+e.message);}hideLoading();}
+// 送信済み表示
+function renderCmDone(){const list=getIraishoList();const tbody=document.getElementById('cm-done-tbody');if(!list.length){tbody.innerHTML='<tr><td colspan="5" style="text-align:center;color:#aaa;padding:2rem;">送信済みデータがありません</td></tr>';return;}tbody.innerHTML=list.map(d=>`<tr><td>${d.registeredAt||'-'}</td><td>${d.userName||'-'}</td><td>${d.serviceType||'-'}</td><td>${d.kibouStartDate||'-'}</td><td><span class="badge-green">${d.status||'受付済'}</span></td></tr>`).join('');}
+// 一覧
+function renderList(){const list=getIraishoList();const tbody=document.getElementById('list-tbody');if(!list.length){tbody.innerHTML='<tr><td colspan="9" style="text-align:center;color:#aaa;padding:2rem;">データがありません</td></tr>';return;}tbody.innerHTML=list.map((d,i)=>`<tr><td><input type="checkbox" class="list-check" data-index="${i}"></td><td>${d.iraiDate||'-'}</td><td><strong>${d.userName||'-'}</strong></td><td>${d.ninteiKekka||'-'}</td><td>${d.kibouStartDate||'-'}</td><td>${d.serviceType||'-'}</td><td>${d.fromJigyoshoName||'-'}</td><td><span class="badge-green">${d.status||'受付済'}</span></td><td><button class="btn-small" style="background:#d1fae5;color:#047857;" onclick="createPlanFromList(${i})">計画書</button></td></tr>`).join('');}
+function toggleAllListCheck(el){document.querySelectorAll('.list-check').forEach(cb=>cb.checked=el.checked);}
+function deleteSelectedIrai(){const checked=document.querySelectorAll('.list-check:checked');if(!checked.length){alert('選択してください');return;}if(!confirm(checked.length+'件削除しますか？'))return;const indices=Array.from(checked).map(cb=>parseInt(cb.dataset.index)).sort((a,b)=>b-a);const list=getIraishoList();indices.forEach(i=>list.splice(i,1));saveIraishoList(list);renderList();}
+function createPlanFromList(i){const d=getIraishoList()[i];switchTabDirect('plan');refreshPlanSelect();document.getElementById('plan-target').value=d.id;generatePlan();}
+</script>
+
+<script>
+// AI計画書
+function refreshPlanSelect(){const sel=document.getElementById('plan-target');const list=getIraishoList();sel.innerHTML='<option value="">-- 選択 --</option>';list.forEach(d=>{sel.innerHTML+=`<option value="${d.id}">${d.userName||'(名前なし)'} - ${d.iraiDate||''}[${d.id}]</option>`;});}
+async function generatePlan(){const tid=document.getElementById('plan-target').value;if(!tid){showAlert('plan-error','依頼書を選択してください');return;}const data=getIraishoList().find(d=>d.id===tid);if(!data){showAlert('plan-error','データが見つかりません');return;}showLoading('AI計画書作成中...');document.getElementById('plan-error').style.display='none';
+const prompt=`あなたは訪問介護のサービス提供責任者です。以下の依頼書情報から訪問介護計画書（仮版）を作成してください。\n\n利用者名:${data.userName||''}\n性別:${data.userSex||''}\n生年月日:${data.userBirthday||''}\n認定結果:${data.ninteiKekka||''}\n疾患:${data.shikkan||''}\n既往症:${data.kiousho||''}\n薬:${data.kusuri||''}\nリハビリ:${data.rehab||''}\n障害自立度:${data.shougaiJiritsu||''}\n認知症自立度:${data.ninchiJiritsu||''}\n希望サービス:${(data.services||[]).join('、')}\nスケジュール:${(data.schedules||[]).map(s=>s.day+' '+s.start+'～'+s.end+'('+s.type+')').join('、')}\n備考:${data.bikou||''}\n目標:${data.kaigoMokuhyou||''}\n\n以下の形式で作成:\n■基本情報\n■解決すべき課題\n■長期目標\n■短期目標\n■サービス内容\n■サービス提供曜日・時間\n■留意事項\n■緊急時の対応\n\n推測箇所は【要確認】と注記。`;
+try{const r=await fetch(getApiUrl(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4096,messages:[{role:'user',content:prompt}]})});const j=await r.json();document.getElementById('plan-result').textContent=j.content?.[0]?.text||'応答なし';document.getElementById('plan-result-card').style.display='block';}catch(e){showAlert('plan-error','エラー:'+e.message);}hideLoading();}
+async function savePlanToSheet(){const gasUrl=getGasUrl();if(!gasUrl){alert('スプレッドシートURLを設定してください');return;}showLoading('保存中...');try{await fetch(gasUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'append',sheetName:'AI計画書',records:[{id:document.getElementById('plan-target').value,date:new Date().toISOString().split('T')[0],analysisType:'訪問介護計画書（仮版）',content:document.getElementById('plan-result').textContent,registeredAt:new Date().toLocaleString('ja-JP')}]})});showAlert('plan-save-success','保存しました');}catch(e){alert('エラー:'+e.message);}hideLoading();}
+function copyPlan(){navigator.clipboard.writeText(document.getElementById('plan-result').textContent).then(()=>alert('コピーしました'));}
+function printPlan(){const t=document.getElementById('plan-result').textContent;const w=window.open('','_blank');w.document.write(`<html><head><title>訪問介護計画書</title><style>body{font-family:sans-serif;padding:2rem;line-height:1.8;white-space:pre-wrap;font-size:14px;}</style></head><body>${t}</body></html>`);w.document.close();w.print();}
+// OCR
+let ocrImageBase64='',ocrResultData=null;
+const dz=document.getElementById('ocr-drop-zone'),fi=document.getElementById('ocr-file-input');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.style.borderColor='#00704A';});
+dz.addEventListener('dragleave',()=>{dz.style.borderColor='#a7f3d0';});
+dz.addEventListener('drop',e=>{e.preventDefault();dz.style.borderColor='#a7f3d0';if(e.dataTransfer.files[0])handleOcrFile(e.dataTransfer.files[0]);});
+fi.addEventListener('change',e=>{if(e.target.files[0])handleOcrFile(e.target.files[0]);});
+function handleOcrFile(f){const r=new FileReader();r.onload=e=>{ocrImageBase64=e.target.result;document.getElementById('ocr-preview-img').src=ocrImageBase64;document.getElementById('ocr-preview-card').style.display='block';document.getElementById('ocr-result-card').style.display='none';};r.readAsDataURL(f);}
+function resetOcr(){ocrImageBase64='';ocrResultData=null;document.getElementById('ocr-preview-card').style.display='none';document.getElementById('ocr-result-card').style.display='none';fi.value='';}
+async function runOcrAnalysis(){if(!ocrImageBase64)return;showLoading('AI-OCR読み取り中...');const b=ocrImageBase64.split(',')[1],m=ocrImageBase64.split(';')[0].split(':')[1];const prompt='この画像は訪問介護のサービス利用依頼書です。全項目をJSON形式で抽出してください。読み取れない項目は空文字に。出力はJSONのみ。キー:iraiDate,serviceType,fromJigyoshoNo,fromJigyoshoName,fromTel,fromFax,fromTanto,hokensha,hihokenshaNo,userKana,userName,userSex,userBirthday,userAddress,userTel,emergencyName,emergencyTel,ninteiKekka,ninteiStart,ninteiEnd,seikatsuHogo,kouhiFutan,shikkan,kiousho,kusuri,rehab,shougaiJiritsu,ninchiJiritsu,kibouStartDate,services(配列),schedules(配列{day,start,end,type}),bikou,kaigoMokuhyou';
+try{const r=await fetch(getApiUrl(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4096,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:m,data:b}},{type:'text',text:prompt}]}]})});const j=await r.json();const t=j.content?.[0]?.text||'';const match=t.match(/\{[\s\S]*\}/);if(!match)throw new Error('JSON解析失敗');ocrResultData=JSON.parse(match[0]);document.getElementById('ocr-result-display').innerHTML='<pre style="font-size:13px;max-height:300px;overflow:auto;">'+JSON.stringify(ocrResultData,null,2)+'</pre>';document.getElementById('ocr-result-card').style.display='block';}catch(e){document.getElementById('ocr-error').textContent='エラー:'+e.message;document.getElementById('ocr-error').style.display='block';}hideLoading();}
+function applyOcrToForm(){if(!ocrResultData)return;const d=ocrResultData,s=(id,v)=>{if(v)document.getElementById(id).value=v;};s('irai-date',d.iraiDate);s('from-jigyosho-no',d.fromJigyoshoNo);s('from-jigyosho-name',d.fromJigyoshoName);s('from-tel',d.fromTel);s('from-fax',d.fromFax);s('from-tanto',d.fromTanto);s('hokensha',d.hokensha);s('hihokensha-no',d.hihokenshaNo);s('user-kana',d.userKana);s('user-name',d.userName);s('user-sex',d.userSex);s('user-birthday',d.userBirthday);s('user-address',d.userAddress);s('user-tel',d.userTel);s('emergency-name',d.emergencyName);s('emergency-tel',d.emergencyTel);s('nintei-kekka',d.ninteiKekka);s('nintei-start',d.ninteiStart);s('nintei-end',d.ninteiEnd);s('shikkan',d.shikkan);s('kiousho',d.kiousho);s('kusuri',d.kusuri);s('rehab',d.rehab);s('shougai-jiritsu',d.shougaiJiritsu);s('ninchi-jiritsu',d.ninchiJiritsu);s('kibou-start-date',d.kibouStartDate);s('bikou',d.bikou);s('kaigo-mokuhyou',d.kaigoMokuhyou);switchTabDirect('input');alert('OCR結果をフォームに反映しました');}
+// 設定
+function unlockSettings(){if(document.getElementById('admin-password').value===ADMIN_PASSWORD){document.getElementById('settings-lock').style.display='none';document.getElementById('settings-content').style.display='block';}else{document.getElementById('admin-error').textContent='❌ パスワードが正しくありません';document.getElementById('admin-error').style.display='block';document.getElementById('admin-password').value='';}}
+function lockSettings(){document.getElementById('settings-lock').style.display='block';document.getElementById('settings-content').style.display='none';document.getElementById('admin-password').value='';}
+function saveSettingsGasUrl(){localStorage.setItem('iraisho_gas_url',document.getElementById('settings-gas-url').value.trim());document.getElementById('settings-gas-status').textContent='✅ 保存しました';}
+function saveSettingsApiUrl(){localStorage.setItem('iraisho_api_url',document.getElementById('settings-api-url').value.trim());document.getElementById('settings-api-status').textContent='✅ 保存しました';}
+// 初期化
+window.addEventListener('DOMContentLoaded',()=>{document.getElementById('settings-gas-url').value=getGasUrl();document.getElementById('settings-api-url').value=getApiUrl();document.getElementById('irai-date').value=new Date().toISOString().split('T')[0];initJigyoshoSelect();autoLoadCmProfile();renderList();});
+</script>
 </body>
 </html>
