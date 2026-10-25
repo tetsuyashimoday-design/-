@@ -331,6 +331,12 @@ body {
     <div style="display:flex;gap:8px;"><input type="text" id="settings-api-url" style="flex:1;font-size:13px;" value="https://raspy-disk-468d.tetsuya-shimoda-y.workers.dev/api/anthropic"><button class="btn btn-primary" onclick="saveSettingsApiUrl()">保存</button></div>
     <div id="settings-api-status" style="font-size:12px;color:#888;margin-top:6px;"></div>
   </div>
+  <div style="border:1px solid #bfdbfe;background:#eff6ff;border-radius:10px;padding:1.25rem;margin-bottom:1rem;">
+    <div style="font-weight:600;margin-bottom:6px;color:#1d4ed8;">📋 Backlog連携（AIDEV_VISIT）</div>
+    <div style="font-size:12px;color:#555;margin-bottom:6px;">依頼書を送信すると Backlog に課題を自動登録します。空欄なら連携しません。</div>
+    <div style="display:flex;gap:8px;"><input type="text" id="settings-backlog-url" placeholder="https://raspy-disk-468d.tetsuya-shimoda-y.workers.dev/api/backlog" style="flex:1;font-size:13px;"><button class="btn btn-primary" onclick="saveSettingsBacklogUrl()">保存</button></div>
+    <div id="settings-backlog-status" style="font-size:12px;color:#888;margin-top:6px;"></div>
+  </div>
   <button class="btn btn-outline" onclick="lockSettings()">🔒 設定をロック</button>
 </div>
 </div>
@@ -457,6 +463,7 @@ const ADMIN_PASSWORD = '8341';
 let currentMode = 'cm';
 function getApiUrl() { return localStorage.getItem('iraisho_api_url') || DEFAULT_API_URL; }
 function getGasUrl() { return localStorage.getItem('iraisho_gas_url') || ''; }
+function getBacklogUrl() { return localStorage.getItem('iraisho_backlog_url') || ''; }
 function getIraishoList() { return JSON.parse(localStorage.getItem('iraisho_data') || '[]'); }
 function saveIraishoList(list) { localStorage.setItem('iraisho_data', JSON.stringify(list)); }
 function getJigyoshoData() { const c = localStorage.getItem('iraisho_jigyosho_master'); return c ? JSON.parse(c) : JIGYOSHO_MASTER; }
@@ -528,10 +535,11 @@ function collectFormData(){
 
 <script>
 // 保存・送信
-async function saveIraisho(){const data=collectFormData();if(!data.userName){showAlert('save-error','利用者名は必須です');return;}const list=getIraishoList();list.unshift(data);saveIraishoList(list);localStorage.setItem('iraisho_cm_profile',JSON.stringify({fromJigyoshoNo:data.fromJigyoshoNo,fromJigyoshoName:data.fromJigyoshoName,fromTel:data.fromTel,fromFax:data.fromFax,fromTanto:data.fromTanto}));await pushToSheet(data);showAlert('save-success',`依頼書を送信しました（${data.userName}様）`);}
-async function saveAndCreatePlan(){const data=collectFormData();if(!data.userName){showAlert('save-error','利用者名は必須です');return;}const list=getIraishoList();list.unshift(data);saveIraishoList(list);await pushToSheet(data);switchTabDirect('plan');refreshPlanSelect();document.getElementById('plan-target').value=data.id;await generatePlan();}
+async function saveIraisho(){const data=collectFormData();if(!data.userName){showAlert('save-error','利用者名は必須です');return;}const list=getIraishoList();list.unshift(data);saveIraishoList(list);localStorage.setItem('iraisho_cm_profile',JSON.stringify({fromJigyoshoNo:data.fromJigyoshoNo,fromJigyoshoName:data.fromJigyoshoName,fromTel:data.fromTel,fromFax:data.fromFax,fromTanto:data.fromTanto}));await pushToSheet(data);await pushToBacklog(data);showAlert('save-success',`依頼書を送信しました（${data.userName}様）`);}
+async function saveAndCreatePlan(){const data=collectFormData();if(!data.userName){showAlert('save-error','利用者名は必須です');return;}const list=getIraishoList();list.unshift(data);saveIraishoList(list);await pushToSheet(data);await pushToBacklog(data);switchTabDirect('plan');refreshPlanSelect();document.getElementById('plan-target').value=data.id;await generatePlan();}
 function clearForm(){if(!confirm('フォームをクリアしますか？'))return;document.querySelectorAll('#panel-input input:not([readonly]),#panel-input textarea,#panel-input select').forEach(el=>{if(el.type==='checkbox')el.checked=false;else if(!el.hasAttribute('readonly'))el.value='';});}
 async function pushToSheet(data){const gasUrl=getGasUrl();if(!gasUrl)return;try{await fetch(gasUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'append',sheetName:'依頼書データ',records:[{id:data.id,iraiDate:data.iraiDate,userName:data.userName,userKana:data.userKana,serviceType:data.serviceType,ninteiKekka:data.ninteiKekka,fromJigyoshoName:data.fromJigyoshoName,fromTanto:data.fromTanto,kibouStartDate:data.kibouStartDate,services:(data.services||[]).join('、'),schedules:(data.schedules||[]).map(s=>`${s.day}${s.start}~${s.end}(${s.type})`).join('/'),shikkan:data.shikkan,bikou:data.bikou,status:data.status,registeredAt:data.registeredAt}]})});}catch(e){console.warn('送信エラー:',e);}}
+async function pushToBacklog(data){const url=getBacklogUrl();if(!url)return;try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:data.id,iraiDate:data.iraiDate,userName:data.userName,serviceType:data.serviceType,ninteiKekka:data.ninteiKekka,fromJigyoshoName:data.fromJigyoshoName,fromTanto:data.fromTanto,kibouStartDate:data.kibouStartDate,services:(data.services||[]).join('、'),schedules:(data.schedules||[]).map(s=>`${s.day}${s.start}~${s.end}(${s.type})`).join('/'),bikou:data.bikou})});if(!r.ok)console.warn('Backlog登録エラー:',r.status,await r.text());}catch(e){console.warn('Backlog送信エラー:',e);}}
 async function syncFromSheet(){const gasUrl=getGasUrl();if(!gasUrl){alert('設定でスプレッドシートURLを設定してください');return;}showLoading('同期中...');try{const r=await fetch(gasUrl+'?sheetName=依頼書データ');const j=await r.json();if(j.success)alert('同期完了:'+((j.records||[]).length)+'件');else alert('エラー:'+j.error);}catch(e){alert('失敗:'+e.message);}hideLoading();}
 // 送信済み表示
 function renderCmDone(){const list=getIraishoList();const tbody=document.getElementById('cm-done-tbody');if(!list.length){tbody.innerHTML='<tr><td colspan="5" style="text-align:center;color:#aaa;padding:2rem;">送信済みデータがありません</td></tr>';return;}tbody.innerHTML=list.map(d=>`<tr><td>${d.registeredAt||'-'}</td><td>${d.userName||'-'}</td><td>${d.serviceType||'-'}</td><td>${d.kibouStartDate||'-'}</td><td><span class="badge-green">${d.status||'受付済'}</span></td></tr>`).join('');}
@@ -567,9 +575,10 @@ function applyOcrToForm(){if(!ocrResultData)return;const d=ocrResultData,s=(id,v
 function unlockSettings(){if(document.getElementById('admin-password').value===ADMIN_PASSWORD){document.getElementById('settings-lock').style.display='none';document.getElementById('settings-content').style.display='block';}else{document.getElementById('admin-error').textContent='❌ パスワードが正しくありません';document.getElementById('admin-error').style.display='block';document.getElementById('admin-password').value='';}}
 function lockSettings(){document.getElementById('settings-lock').style.display='block';document.getElementById('settings-content').style.display='none';document.getElementById('admin-password').value='';}
 function saveSettingsGasUrl(){localStorage.setItem('iraisho_gas_url',document.getElementById('settings-gas-url').value.trim());document.getElementById('settings-gas-status').textContent='✅ 保存しました';}
+function saveSettingsBacklogUrl(){localStorage.setItem('iraisho_backlog_url',document.getElementById('settings-backlog-url').value.trim());document.getElementById('settings-backlog-status').textContent='✅ 保存しました';}
 function saveSettingsApiUrl(){localStorage.setItem('iraisho_api_url',document.getElementById('settings-api-url').value.trim());document.getElementById('settings-api-status').textContent='✅ 保存しました';}
 // 初期化
-window.addEventListener('DOMContentLoaded',()=>{document.getElementById('settings-gas-url').value=getGasUrl();document.getElementById('settings-api-url').value=getApiUrl();document.getElementById('irai-date').value=new Date().toISOString().split('T')[0];initJigyoshoSelect();autoLoadCmProfile();renderList();});
+window.addEventListener('DOMContentLoaded',()=>{document.getElementById('settings-gas-url').value=getGasUrl();document.getElementById('settings-api-url').value=getApiUrl();document.getElementById('settings-backlog-url').value=getBacklogUrl();document.getElementById('irai-date').value=new Date().toISOString().split('T')[0];initJigyoshoSelect();autoLoadCmProfile();renderList();});
 </script>
 </body>
 </html>
