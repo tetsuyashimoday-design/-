@@ -48,6 +48,7 @@ header.top .wrap{display:flex;align-items:center;justify-content:space-between;g
 .brand{display:flex;flex-direction:column;min-width:0}
 .brand b{font-family:var(--font-head);font-size:20px;font-weight:700;letter-spacing:.02em;line-height:1.3}
 .brand small{color:var(--muted);font-size:13px}
+.top-right{display:flex;align-items:center;gap:10px}
 .today-chip{font-size:14px;color:var(--muted);text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 .today-chip strong{display:block;color:var(--fg);font-size:17px}
 
@@ -163,7 +164,10 @@ nav.tabs .badge{position:absolute;top:8px;left:calc(50% + 6px);background:var(--
 
 <header class="top gutter"><div class="wrap">
   <div class="brand"><b>サ責タスク帳</b><small id="officeName">辻堂店</small></div>
-  <div class="today-chip"><span id="todayLabel"></span><strong id="nowLabel"></strong></div>
+  <div class="top-right">
+    <button class="btn small" id="btnFeedbackTop">ご意見</button>
+    <div class="today-chip"><span id="todayLabel"></span><strong id="nowLabel"></strong></div>
+  </div>
 </div></header>
 
 <main class="gutter"><div class="wrap">
@@ -224,6 +228,16 @@ nav.tabs .badge{position:absolute;top:8px;left:calc(50% + 6px);background:var(--
   <!-- 設定 -->
   <section class="view" id="v-settings" hidden aria-label="設定">
     <h2>設定</h2>
+    <div class="card" id="feedbackCard">
+      <h3>試してみたご意見</h3>
+      <p class="hint">試行中です。使いにくい点、わかりにくい言葉、ほしい機能などを教えてください。</p>
+      <label class="f">お名前（任意）<input type="text" id="fbName" placeholder="例：鈴木"></label>
+      <label class="f">ご意見<textarea id="fbText" rows="4" placeholder="例：担当の選び直しが面倒。電話の相手の名前も残したい"></textarea></label>
+      <div class="btns">
+        <button class="btn primary grow" id="btnFbComment" hidden>このページにコメントで送る</button>
+        <button class="btn grow" id="btnFbCopy">意見をコピー（ガルーン等に貼る）</button>
+      </div>
+    </div>
     <div class="card">
       <label class="f">事業所名<input type="text" id="setOffice" placeholder="例：辻堂店"></label>
     </div>
@@ -610,6 +624,27 @@ $("#btnImport").addEventListener("click", () => {
   } catch (e) { toast("読み込めませんでした。書き出した文をそのまま貼り付けてください"); }
 });
 
+/* ---------- feedback ---------- */
+let commentsApi = null;
+function fbBody(){
+  const name = $("#fbName").value.trim(), text = $("#fbText").value.trim();
+  return { name, text, full: "【サ責タスク帳へのご意見】" + (name ? "（" + name + "）" : "") + "\n" + text };
+}
+$("#btnFeedbackTop").addEventListener("click", () => { show("settings"); setTimeout(() => $("#fbText").focus(), 50); });
+$("#btnFbCopy").addEventListener("click", (e) => {
+  const b = fbBody(); if (!b.text) { toast("ご意見を入力してください"); $("#fbText").focus(); return; }
+  copy(b.full, e.currentTarget);
+});
+$("#btnFbComment").addEventListener("click", async () => {
+  if (!commentsApi) return;
+  const b = fbBody();
+  if (b.text) await copy(b.full);
+  try {
+    const r = await commentsApi.openComposer({ element: $("#feedbackCard") });
+    if (r && r.opened) toast(b.text ? "コメント欄が開きました。コピーした意見を貼り付けて送ってください" : "コメント欄にご意見を書いて送ってください");
+  } catch (e) { $("#btnFbComment").hidden = true; toast("コメントが使えないため、コピーしてガルーン等で送ってください"); }
+});
+
 /* ---------- import: extraction ---------- */
 const SAMPLE = [
   "[09:12] 事務所：はい、辻堂です。あ、〇〇居宅のケアマネさん。山田様の件ですね。",
@@ -790,6 +825,7 @@ render();
 setInterval(render, 60000);
 if (window.claude && typeof window.claude.use === "function") {
   window.claude.use("sample").then((fn) => { if (fn) { sampleFn = fn; setEngine(); } }).catch(() => {});
+  window.claude.use("comments").then((c) => { if (c) { commentsApi = c; $("#btnFbComment").hidden = false; } }).catch(() => {});
 }
 })();
 </script>
